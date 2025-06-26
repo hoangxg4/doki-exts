@@ -1,0 +1,101 @@
+package org.dokiteam.doki.parsers.util
+
+import okhttp3.HttpUrl
+import org.jsoup.nodes.Element
+import org.dokiteam.doki.parsers.ErrorMessages
+import org.dokiteam.doki.parsers.InternalParsersApi
+import org.dokiteam.doki.parsers.model.ContentType
+import org.dokiteam.doki.parsers.MangaParser
+import org.dokiteam.doki.parsers.core.LegacyMangaParser
+import org.dokiteam.doki.parsers.exception.ParseException
+import org.dokiteam.doki.parsers.model.ContentRating
+import org.dokiteam.doki.parsers.model.Demographic
+import org.dokiteam.doki.parsers.model.MangaState
+import org.dokiteam.doki.parsers.model.MangaTag
+import org.dokiteam.doki.parsers.model.*
+
+
+/**
+ * Create a unique id for [Manga]/[MangaChapter]/[MangaPage].
+ * @param url must be relative url, without a domain
+ * @see [Manga.id]
+ * @see [MangaChapter.id]
+ * @see [MangaPage.id]
+ */
+@InternalParsersApi
+public fun MangaParser.generateUid(url: String): Long {
+	var h = org.dokiteam.doki.parsers.util.LONG_HASH_SEED
+	source.name.forEach { c ->
+		h = 31 * h + c.code
+	}
+	url.forEach { c ->
+		h = 31 * h + c.code
+	}
+	return h
+}
+
+/**
+ * Create a unique id for [Manga]/[MangaChapter]/[MangaPage].
+ * @param id an internal identifier
+ * @see [Manga.id]
+ * @see [MangaChapter.id]
+ * @see [MangaPage.id]
+ */
+@InternalParsersApi
+public fun MangaParser.generateUid(id: Long): Long {
+	var h = org.dokiteam.doki.parsers.util.LONG_HASH_SEED
+	source.name.forEach { c ->
+		h = 31 * h + c.code
+	}
+	h = 31 * h + id
+	return h
+}
+
+@InternalParsersApi
+public fun Element.parseFailed(message: String? = null): Nothing {
+	throw ParseException(message, ownerDocument()?.location() ?: baseUri(), null)
+}
+
+@InternalParsersApi
+public fun Set<MangaTag>?.oneOrThrowIfMany(): MangaTag? = oneOrThrowIfMany(
+	ErrorMessages.FILTER_MULTIPLE_GENRES_NOT_SUPPORTED,
+)
+
+@InternalParsersApi
+public fun Set<MangaState>?.oneOrThrowIfMany(): MangaState? = oneOrThrowIfMany(
+	ErrorMessages.FILTER_MULTIPLE_STATES_NOT_SUPPORTED,
+)
+
+@InternalParsersApi
+public fun Set<ContentType>?.oneOrThrowIfMany(): ContentType? = oneOrThrowIfMany(
+	ErrorMessages.FILTER_MULTIPLE_CONTENT_TYPES_NOT_SUPPORTED,
+)
+
+@InternalParsersApi
+public fun Set<Demographic>?.oneOrThrowIfMany(): Demographic? = oneOrThrowIfMany(
+	ErrorMessages.FILTER_MULTIPLE_DEMOGRAPHICS_NOT_SUPPORTED,
+)
+
+@InternalParsersApi
+public fun Set<ContentRating>?.oneOrThrowIfMany(): ContentRating? = oneOrThrowIfMany(
+	ErrorMessages.FILTER_MULTIPLE_CONTENT_RATING_NOT_SUPPORTED,
+)
+
+private fun <T> Set<T>?.oneOrThrowIfMany(msg: String): T? = when {
+	isNullOrEmpty() -> null
+	size == 1 -> first()
+	else -> throw IllegalArgumentException(msg)
+}
+
+@InternalParsersApi
+public fun LegacyMangaParser.getDomain(subdomain: String): String {
+	val domain = domain
+	return subdomain + "." + domain.removePrefix("www.")
+}
+
+@InternalParsersApi
+public fun MangaParser.urlBuilder(subdomain: String? = null): HttpUrl.Builder {
+	return HttpUrl.Builder()
+		.scheme(org.dokiteam.doki.parsers.util.SCHEME_HTTPS)
+		.host(if (subdomain == null) domain else "$subdomain.$domain")
+}

@@ -1,0 +1,99 @@
+package org.dokiteam.doki.parsers
+
+import okhttp3.Headers
+import okhttp3.HttpUrl
+import okhttp3.Interceptor
+import org.dokiteam.doki.parsers.model.Manga
+import org.dokiteam.doki.parsers.model.MangaListFilter
+import org.dokiteam.doki.parsers.model.MangaPage
+import org.dokiteam.doki.parsers.model.SortOrder
+import org.dokiteam.doki.parsers.config.ConfigKey
+import org.dokiteam.doki.parsers.model.Favicons
+import org.dokiteam.doki.parsers.model.MangaChapter
+import org.dokiteam.doki.parsers.model.MangaListFilterCapabilities
+import org.dokiteam.doki.parsers.model.MangaListFilterOptions
+import org.dokiteam.doki.parsers.config.MangaSourceConfig
+import org.dokiteam.doki.parsers.model.*
+import org.dokiteam.doki.parsers.model.search.MangaSearchQuery
+import org.dokiteam.doki.parsers.model.search.MangaSearchQueryCapabilities
+import org.dokiteam.doki.parsers.util.LinkResolver
+import org.dokiteam.doki.parsers.util.convertToMangaSearchQuery
+import org.dokiteam.doki.parsers.util.toMangaListFilterCapabilities
+import java.util.*
+
+public interface MangaParser : Interceptor {
+
+	public val source: MangaParserSource
+
+	/**
+	 * Supported [SortOrder] variants. Must not be empty.
+	 *
+	 * For better performance use [EnumSet] for more than one item.
+	 */
+	public val availableSortOrders: Set<SortOrder>
+
+	public val searchQueryCapabilities: MangaSearchQueryCapabilities
+
+	public val config: MangaSourceConfig
+
+	public val authorizationProvider: MangaParserAuthProvider?
+		get() = this as? MangaParserAuthProvider
+
+	/**
+	 * Provide default domain and available alternatives, if any.
+	 *
+	 * Never hardcode domain in requests, use [domain] instead.
+	 */
+	public val configKeyDomain: ConfigKey.Domain
+
+	public val domain: String
+
+	public suspend fun getList(query: MangaSearchQuery): List<Manga>
+
+	/**
+	 * Parse details for [Manga]: chapters list, description, large cover, etc.
+	 * Must return the same manga, may change any fields excepts id, url and source
+	 * @see Manga.copy
+	 */
+	public suspend fun getDetails(manga: Manga): Manga
+
+	/**
+	 * Parse pages list for specified chapter.
+	 * @see MangaPage for details
+	 */
+	public suspend fun getPages(chapter: MangaChapter): List<MangaPage>
+
+	/**
+	 * Fetch direct link to the page image.
+	 */
+	public suspend fun getPageUrl(page: MangaPage): String
+
+	public suspend fun getFilterOptions(): MangaListFilterOptions
+
+	/**
+	 * Parse favicons from the main page of the source`s website
+	 */
+	public suspend fun getFavicons(): Favicons
+
+	public fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>)
+
+	public suspend fun getRelatedManga(seed: Manga): List<Manga>
+
+	public fun getRequestHeaders(): Headers
+
+	/**
+	 * Return [Manga] object by web link to it
+	 * @see [Manga.publicUrl]
+	 */
+	@InternalParsersApi
+	public suspend fun resolveLink(resolver: LinkResolver, link: HttpUrl): Manga?
+
+	@Deprecated("Use getList(query: MangaSearchQuery) instead")
+	public suspend fun getList(offset: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
+		return getList(convertToMangaSearchQuery(offset, order, filter))
+	}
+
+	@Deprecated("Please check searchQueryCapabilities")
+	public val filterCapabilities: MangaListFilterCapabilities
+		get() = searchQueryCapabilities.toMangaListFilterCapabilities()
+}

@@ -1,0 +1,195 @@
+package org.dokiteam.doki.parsers.site.vi
+
+import okhttp3.internal.closeQuietly
+import org.dokiteam.doki.parsers.model.RATING_UNKNOWN
+import org.dokiteam.doki.parsers.util.generateUid
+import org.dokiteam.doki.parsers.util.mapToSet
+import org.dokiteam.doki.parsers.MangaLoaderContext
+import org.dokiteam.doki.parsers.MangaSourceParser
+import org.dokiteam.doki.parsers.config.ConfigKey
+import org.dokiteam.doki.parsers.core.LegacyPagedMangaParser
+import org.dokiteam.doki.parsers.model.ContentRating
+import org.dokiteam.doki.parsers.model.ContentType
+import org.dokiteam.doki.parsers.model.Manga
+import org.dokiteam.doki.parsers.model.MangaChapter
+import org.dokiteam.doki.parsers.model.MangaListFilter
+import org.dokiteam.doki.parsers.model.MangaListFilterCapabilities
+import org.dokiteam.doki.parsers.model.MangaListFilterOptions
+import org.dokiteam.doki.parsers.model.MangaPage
+import org.dokiteam.doki.parsers.model.MangaState
+import org.dokiteam.doki.parsers.model.MangaTag
+import org.dokiteam.doki.parsers.model.SortOrder
+import org.dokiteam.doki.parsers.util.attrAsRelativeUrl
+import org.dokiteam.doki.parsers.util.mapChapters
+import org.dokiteam.doki.parsers.util.parseHtml
+import org.dokiteam.doki.parsers.util.selectFirstOrThrow
+import org.dokiteam.doki.parsers.util.textOrNull
+import org.dokiteam.doki.parsers.util.toAbsoluteUrl
+import org.dokiteam.doki.parsers.util.toTitleCase
+import org.dokiteam.doki.parsers.util.tryParse
+import org.dokiteam.doki.parsers.util.urlEncoded
+import org.dokiteam.doki.parsers.model.*
+import org.dokiteam.doki.parsers.network.UserAgents
+import org.dokiteam.doki.parsers.util.*
+import java.text.SimpleDateFormat
+import java.util.*
+
+@MangaSourceParser("DUALEOTRUYEN", "Dưa Leo Truyện", "vi", type = ContentType.HENTAI)
+internal class DuaLeoTruyen(context: MangaLoaderContext) :
+	LegacyPagedMangaParser(context, MangaParserSource.DUALEOTRUYEN, 60) {
+
+	override val configKeyDomain: ConfigKey.Domain
+		get() = ConfigKey.Domain("dualeotruyenl.com")
+
+	override val userAgentKey = ConfigKey.UserAgent(UserAgents.CHROME_DESKTOP)
+
+	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
+		super.onCreateConfig(keys)
+		keys.add(userAgentKey)
+	}
+
+	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
+		SortOrder.UPDATED,
+		SortOrder.POPULARITY,
+	)
+
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isSearchSupported = true,
+		)
+
+	override suspend fun getFilterOptions() = MangaListFilterOptions(
+		availableTags = fetchAvailableTags(),
+	)
+
+	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
+		val url = buildString {
+			append("https://")
+			append(domain)
+			when {
+				!filter.query.isNullOrEmpty() -> {
+					append("/tim-kiem.html")
+					append("?key=")
+					append(filter.query.urlEncoded())
+				}
+
+				filter.tags.isNotEmpty() -> {
+					append("/the-loai/")
+					append(filter.tags.first().key)
+					append(".html")
+				}
+
+				else -> when (order) {
+					SortOrder.POPULARITY -> append("/top-ngay.html")
+					else -> append("/truyen-moi-cap-nhat.html")
+				}
+			}
+			if (page > 1) {
+				append("?page=")
+				append(page)
+			}
+		}
+
+		val doc = webClient.httpGet(url).parseHtml()
+		return doc.select(".box_list > .li_truyen").map { li ->
+			val href = li.selectFirstOrThrow("a").attrAsRelativeUrl("href")
+			Manga(
+				id = generateUid(href),
+				title = li.selectFirst(".name")?.text().orEmpty(),
+				altTitles = emptySet(),
+				url = href,
+				publicUrl = href.toAbsoluteUrl(domain),
+				rating = RATING_UNKNOWN,
+				contentRating = if (isNsfwSource) ContentRating.ADULT else null,
+				coverUrl = li.selectFirst("img")?.absUrl("data-src").orEmpty(),
+				tags = emptySet(),
+				state = null,
+				authors = emptySet(),
+				source = source,
+			)
+		}
+	}
+
+	override suspend fun getDetails(manga: Manga): Manga {
+		val doc = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
+		val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.ENGLISH)
+		val author = doc.selectFirst(".info-item:has(.fa-user)")?.textOrNull()?.removePrefix("Tác giả: ")
+
+		return manga.copy(
+			altTitles = setOfNotNull(doc.selectFirst(".box_info_right h2")?.textOrNull()),
+			tags = doc.select("ul.list-tag-story li a").mapToSet {
+				MangaTag(
+					key = it.attr("href").substringAfterLast('/').substringBefore('.'),
+					title = it.text().toTitleCase(sourceLocale),
+					source = source,
+				)
+			},
+			state = when (doc.selectFirst(".info-item:has(.fa-rss)")?.text()?.removePrefix("Tình trang: ")) {
+				"Đang cập nhật" -> MangaState.ONGOING
+				"Full" -> MangaState.FINISHED
+				else -> null
+			},
+			authors = setOfNotNull(author),
+			description = doc.selectFirst(".story-detail-info")?.html(),
+			chapters = doc.select(".list-chapters .chapter-item").mapChapters(reversed = true) { i, div ->
+				val a = div.selectFirstOrThrow(".chap_name a")
+				val href = a.attrAsRelativeUrl("href")
+				val dateText = div.selectFirst(".chap_update")?.text()
+				MangaChapter(
+					id = generateUid(href),
+					title = a.text(),
+					number = i + 1f,
+					url = href,
+					scanlator = null,
+					uploadDate = dateFormat.tryParse(dateText),
+					branch = null,
+					source = source,
+					volume = 0,
+				)
+			},
+		)
+	}
+
+	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
+		val fullUrl = chapter.url.toAbsoluteUrl(domain)
+		val doc = webClient.httpGet(fullUrl).parseHtml()
+
+		val chapterId = doc.selectFirst("input[name=chap]")?.`val`()
+		val comicsId = doc.selectFirst("input[name=truyen]")?.`val`()
+		if (chapterId != null && comicsId != null) {
+			webClient.httpPost(
+				url = "https://$domain/process.php",
+				form = mapOf(
+					"action" to "update_view_chap",
+					"truyen" to comicsId,
+					"chap" to chapterId,
+				),
+			).closeQuietly()
+		}
+
+		return doc.select(".content_view_chap img").mapIndexed { i, img ->
+			val url = img.absUrl("data-original")
+			MangaPage(
+				id = generateUid(url),
+				url = url,
+				preview = null,
+				source = source,
+			)
+		}
+	}
+
+	private fun fetchAvailableTags(): Set<MangaTag> {
+		return listOf(
+			"18+", "Đam Mỹ", "Harem", "Truyện Màu", "BoyLove", "GirlLove",
+			"Phiêu lưu", "Yaoi", "Hài Hước", "Bách Hợp", "Chuyển Sinh", "Drama",
+			"Hành Động", "Kịch Tính", "Cổ Đại", "Ecchi", "Hentai", "Lãng Mạn",
+			"Người Thú", "Tình Cảm", "Yuri", "Oneshot", "Doujinshi", "ABO",
+		).mapToSet { name ->
+			MangaTag(
+				key = name.lowercase().replace(' ', '-'),
+				title = name,
+				source = source,
+			)
+		}
+	}
+}
