@@ -1,6 +1,7 @@
 package org.dokiteam.doki.parsers.util
 
 import org.junit.jupiter.api.Test
+import org.dokiteam.doki.parsers.core.LegacyMangaParser
 import org.dokiteam.doki.parsers.MangaLoaderContextMock
 import org.dokiteam.doki.parsers.model.MangaParserSource
 import org.dokiteam.doki.parsers.newParser

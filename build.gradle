@@ -64,8 +64,8 @@ dependencies {
 	api 'org.jsoup:jsoup:1.19.1'
 	implementation 'org.json:json:20240303'
 	implementation 'androidx.collection:collection:1.5.0'
-	ksp project(':doki-exts-ksp')
 
+	ksp project(':doki-ksp')
 
 	testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.1'
 	testImplementation 'org.junit.jupiter:junit-jupiter-engine:5.10.1'

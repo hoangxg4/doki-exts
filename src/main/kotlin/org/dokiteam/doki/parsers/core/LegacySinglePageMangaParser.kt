@@ -9,8 +9,8 @@ import org.dokiteam.doki.parsers.model.SortOrder
 
 @InternalParsersApi
 public abstract class LegacySinglePageMangaParser(
-    context: MangaLoaderContext,
-    source: MangaParserSource,
+	context: MangaLoaderContext,
+	source: MangaParserSource,
 ) : LegacyMangaParser(context, source) {
 
 	final override suspend fun getList(offset: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {

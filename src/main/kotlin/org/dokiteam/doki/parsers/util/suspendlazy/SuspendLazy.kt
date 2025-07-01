@@ -24,14 +24,14 @@ public suspend fun <R, T : R> SuspendLazy<T>.getOrDefault(defaultValue: R): R = 
 }.getOrDefault(defaultValue)
 
 public fun <T> suspendLazy(
-    context: CoroutineContext = EmptyCoroutineContext,
-    initializer: SuspendLazyInitializer<T>,
+	context: CoroutineContext = EmptyCoroutineContext,
+	initializer: SuspendLazyInitializer<T>,
 ): SuspendLazy<T> = SuspendLazyImpl(context, initializer)
 
 public fun <T : Any> suspendLazy(
-    context: CoroutineContext = EmptyCoroutineContext,
-    soft: Boolean,
-    initializer: SuspendLazyInitializer<T>,
+	context: CoroutineContext = EmptyCoroutineContext,
+	soft: Boolean,
+	initializer: SuspendLazyInitializer<T>,
 ): SuspendLazy<T> = if (soft) {
 	SoftSuspendLazyImpl(context, initializer)
 } else {

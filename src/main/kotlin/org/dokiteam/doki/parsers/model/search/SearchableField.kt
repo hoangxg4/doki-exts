@@ -1,10 +1,6 @@
 package org.dokiteam.doki.parsers.model.search
 
-import org.dokiteam.doki.parsers.model.ContentRating
-import org.dokiteam.doki.parsers.model.ContentType
-import org.dokiteam.doki.parsers.model.Demographic
-import org.dokiteam.doki.parsers.model.MangaState
-import org.dokiteam.doki.parsers.model.MangaTag
+import org.dokiteam.doki.parsers.model.*
 import java.util.*
 
 /**

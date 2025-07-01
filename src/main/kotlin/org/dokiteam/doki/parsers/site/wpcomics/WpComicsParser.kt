@@ -7,38 +7,12 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
-import org.dokiteam.doki.parsers.model.RATING_UNKNOWN
-import org.dokiteam.doki.parsers.util.generateUid
-import org.dokiteam.doki.parsers.util.mapNotNullToSet
-import org.dokiteam.doki.parsers.util.oneOrThrowIfMany
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.config.ConfigKey
 import org.dokiteam.doki.parsers.core.LegacyPagedMangaParser
-import org.dokiteam.doki.parsers.model.Manga
-import org.dokiteam.doki.parsers.model.MangaChapter
-import org.dokiteam.doki.parsers.model.MangaListFilter
-import org.dokiteam.doki.parsers.model.MangaPage
-import org.dokiteam.doki.parsers.model.MangaState
-import org.dokiteam.doki.parsers.model.MangaTag
-import org.dokiteam.doki.parsers.model.SortOrder
-import org.dokiteam.doki.parsers.model.WordSet
-import org.dokiteam.doki.parsers.util.attrAsAbsoluteUrlOrNull
-import org.dokiteam.doki.parsers.util.attrAsRelativeUrl
-import org.dokiteam.doki.parsers.util.mapChapters
-import org.dokiteam.doki.parsers.util.parseHtml
-import org.dokiteam.doki.parsers.util.requireSrc
-import org.dokiteam.doki.parsers.util.runCatchingCancellable
-import org.dokiteam.doki.parsers.util.selectFirstOrThrow
-import org.dokiteam.doki.parsers.util.textOrNull
-import org.dokiteam.doki.parsers.util.toAbsoluteUrl
-import org.dokiteam.doki.parsers.util.toRelativeUrl
-import org.dokiteam.doki.parsers.util.tryParse
-import org.dokiteam.doki.parsers.util.urlEncoded
 import org.dokiteam.doki.parsers.exception.NotFoundException
-import org.dokiteam.doki.parsers.model.MangaListFilterCapabilities
-import org.dokiteam.doki.parsers.model.MangaListFilterOptions
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import java.text.DateFormat
@@ -46,10 +20,10 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 internal abstract class WpComicsParser(
-    context: MangaLoaderContext,
-    source: MangaParserSource,
-    domain: String,
-    pageSize: Int = 48,
+	context: MangaLoaderContext,
+	source: MangaParserSource,
+	domain: String,
+	pageSize: Int = 48,
 ) : LegacyPagedMangaParser(context, source, pageSize) {
 
 	companion object {

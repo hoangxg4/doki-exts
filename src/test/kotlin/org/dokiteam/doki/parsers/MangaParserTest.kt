@@ -2,16 +2,11 @@ package org.dokiteam.doki.parsers
 
 import kotlinx.coroutines.test.runTest
 import okhttp3.HttpUrl
-import org.dokiteam.doki.parsers.MangaParserAuthProvider
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.params.ParameterizedTest
 import org.dokiteam.doki.parsers.core.LegacyPagedMangaParser
-import org.dokiteam.doki.parsers.model.Manga
-import org.dokiteam.doki.parsers.model.SortOrder
 import org.dokiteam.doki.parsers.core.LegacySinglePageMangaParser
-import org.dokiteam.doki.parsers.model.MangaChapter
-import org.dokiteam.doki.parsers.model.MangaSource
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.model.search.MangaSearchQuery
 import org.dokiteam.doki.parsers.model.search.QueryCriteria
@@ -19,7 +14,7 @@ import org.dokiteam.doki.parsers.model.search.QueryCriteria.Include
 import org.dokiteam.doki.parsers.model.search.SearchableField.*
 import org.dokiteam.doki.parsers.util.medianOrNull
 import org.dokiteam.doki.parsers.util.mimeType
-import org.dokiteam.doki.parsers.test_util.*
+import org.dokiteam.doki.test_util.*
 import kotlin.time.Duration.Companion.minutes
 
 //@ExtendWith(AuthCheckExtension::class)

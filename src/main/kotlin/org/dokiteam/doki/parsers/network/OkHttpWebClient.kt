@@ -14,8 +14,8 @@ import org.dokiteam.doki.parsers.util.parseJson
 import java.net.HttpURLConnection
 
 public class OkHttpWebClient(
-    private val httpClient: OkHttpClient,
-    private val mangaSource: MangaSource,
+	private val httpClient: OkHttpClient,
+	private val mangaSource: MangaSource,
 ) : WebClient {
 
 	override suspend fun httpGet(url: HttpUrl, extraHeaders: Headers?): Response {

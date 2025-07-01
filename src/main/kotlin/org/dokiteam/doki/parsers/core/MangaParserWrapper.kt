@@ -5,18 +5,14 @@ import kotlinx.coroutines.withContext
 import okhttp3.Interceptor
 import okhttp3.Request
 import okhttp3.Response
-import org.dokiteam.doki.parsers.model.Manga
-import org.dokiteam.doki.parsers.model.MangaChapter
-import org.dokiteam.doki.parsers.model.MangaPage
 import org.dokiteam.doki.parsers.MangaParser
-import org.dokiteam.doki.parsers.model.Favicons
 import org.dokiteam.doki.parsers.MangaParserAuthProvider
-import org.dokiteam.doki.parsers.model.MangaListFilterOptions
+import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.model.search.MangaSearchQuery
 import org.dokiteam.doki.parsers.util.mergeWith
 
 internal class MangaParserWrapper(
-    private val delegate: MangaParser,
+	private val delegate: MangaParser,
 ) : MangaParser by delegate {
 
 	override val authorizationProvider: MangaParserAuthProvider?

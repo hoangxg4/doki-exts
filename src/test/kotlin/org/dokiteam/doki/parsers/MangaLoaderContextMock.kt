@@ -6,7 +6,6 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
-import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.bitmap.Bitmap
 import org.dokiteam.doki.parsers.config.MangaSourceConfig
 import org.dokiteam.doki.parsers.model.MangaSource

@@ -1,6 +1,5 @@
 package org.dokiteam.doki.parsers.util
 
-import org.dokiteam.doki.parsers.util.Paginator
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 

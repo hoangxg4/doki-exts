@@ -6,10 +6,7 @@ import org.junit.jupiter.api.Test
 import org.dokiteam.doki.parsers.model.MangaParserSource
 import org.dokiteam.doki.parsers.model.MangaState
 import org.dokiteam.doki.parsers.model.MangaTag
-import org.dokiteam.doki.parsers.model.search.MangaSearchQuery
-import org.dokiteam.doki.parsers.model.search.MangaSearchQueryCapabilities
 import org.dokiteam.doki.parsers.model.search.QueryCriteria.*
-import org.dokiteam.doki.parsers.model.search.SearchCapability
 import org.dokiteam.doki.parsers.model.search.SearchableField.*
 import java.util.*
 

@@ -3,15 +3,7 @@ package org.dokiteam.doki.parsers
 import okhttp3.Headers
 import okhttp3.HttpUrl
 import okhttp3.Interceptor
-import org.dokiteam.doki.parsers.model.Manga
-import org.dokiteam.doki.parsers.model.MangaListFilter
-import org.dokiteam.doki.parsers.model.MangaPage
-import org.dokiteam.doki.parsers.model.SortOrder
 import org.dokiteam.doki.parsers.config.ConfigKey
-import org.dokiteam.doki.parsers.model.Favicons
-import org.dokiteam.doki.parsers.model.MangaChapter
-import org.dokiteam.doki.parsers.model.MangaListFilterCapabilities
-import org.dokiteam.doki.parsers.model.MangaListFilterOptions
 import org.dokiteam.doki.parsers.config.MangaSourceConfig
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.model.search.MangaSearchQuery

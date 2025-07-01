@@ -1,7 +1,5 @@
 package org.dokiteam.doki.parsers.site.madara.vi
 
-import org.dokiteam.doki.parsers.util.generateUid
-import org.dokiteam.doki.parsers.util.mapToSet
 import org.jsoup.nodes.Element
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
@@ -13,11 +11,7 @@ import org.dokiteam.doki.parsers.model.MangaTag
 import org.dokiteam.doki.parsers.model.MangaListFilterOptions
 import org.dokiteam.doki.parsers.model.MangaParserSource
 import org.dokiteam.doki.parsers.site.madara.MadaraParser
-import org.dokiteam.doki.parsers.util.parseHtml
-import org.dokiteam.doki.parsers.util.toAbsoluteUrl
-import org.dokiteam.doki.parsers.util.toRelativeUrl
 import org.dokiteam.doki.parsers.config.ConfigKey
-import org.dokiteam.doki.parsers.util.requireSrc
 import org.dokiteam.doki.parsers.util.*
 import java.util.*
 

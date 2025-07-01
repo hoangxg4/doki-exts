@@ -8,8 +8,8 @@ import org.dokiteam.doki.parsers.model.search.MangaSearchQuery
 
 @InternalParsersApi
 public abstract class SinglePageMangaParser(
-    context: MangaLoaderContext,
-    source: MangaParserSource,
+	context: MangaLoaderContext,
+	source: MangaParserSource,
 ) : AbstractMangaParser(context, source) {
 
 	final override suspend fun getList(query: MangaSearchQuery): List<Manga> {

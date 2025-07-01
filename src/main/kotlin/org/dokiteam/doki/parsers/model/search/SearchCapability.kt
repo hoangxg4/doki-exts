@@ -22,12 +22,12 @@ import kotlin.reflect.KClass
  *      - `false` if using this field requires it to be the only criterion in query.
  */
 public data class SearchCapability(
-    /** The searchable field that this capability applies to. */
+	/** The searchable field that this capability applies to. */
 	@JvmField public val field: SearchableField,
-    /** The set of supported criteria types for this field. */
+	/** The set of supported criteria types for this field. */
 	@JvmField public val criteriaTypes: Set<KClass<out QueryCriteria<*>>>,
-    /** Indicates whether the field supports multiple values. */
+	/** Indicates whether the field supports multiple values. */
 	@JvmField public val isMultiple: Boolean,
-    /** Specifies whether the field can be used alongside other criteria. */
+	/** Specifies whether the field can be used alongside other criteria. */
 	@JvmField public val isExclusive: Boolean = false,
 )

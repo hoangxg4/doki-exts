@@ -1,20 +1,14 @@
 package org.dokiteam.doki.parsers.util
 
-import org.dokiteam.doki.parsers.model.ContentRating
-import org.dokiteam.doki.parsers.model.MangaListFilter
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.model.ContentType.MANGA
 import org.dokiteam.doki.parsers.model.ContentType.MANHUA
-import org.dokiteam.doki.parsers.model.SortOrder
 import org.dokiteam.doki.parsers.model.Demographic.SEINEN
-import org.dokiteam.doki.parsers.model.MangaState
-import org.dokiteam.doki.parsers.model.MangaTag
 import org.dokiteam.doki.parsers.model.search.MangaSearchQuery
 import org.dokiteam.doki.parsers.model.search.QueryCriteria.*
 import org.dokiteam.doki.parsers.model.search.SearchableField.*
-import org.dokiteam.doki.parsers.util.convertToMangaSearchQuery
 import java.util.*
 
 class ListFilterToSearchQueryConverterTest {

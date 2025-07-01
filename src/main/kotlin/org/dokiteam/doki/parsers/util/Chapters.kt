@@ -8,8 +8,8 @@ import org.dokiteam.doki.parsers.util.json.asTypedList
 
 @InternalParsersApi
 public inline fun <T> List<T>.mapChapters(
-    reversed: Boolean = false,
-    transform: (index: Int, T) -> MangaChapter?,
+	reversed: Boolean = false,
+	transform: (index: Int, T) -> MangaChapter?,
 ): List<MangaChapter> {
 	val builder = ChaptersListBuilder(collectionSize())
 	var index = 0
@@ -24,14 +24,14 @@ public inline fun <T> List<T>.mapChapters(
 
 @InternalParsersApi
 public inline fun JSONArray.mapChapters(
-    reversed: Boolean = false,
-    transform: (index: Int, JSONObject) -> MangaChapter?,
+	reversed: Boolean = false,
+	transform: (index: Int, JSONObject) -> MangaChapter?,
 ): List<MangaChapter> = asTypedList<JSONObject>().mapChapters(reversed, transform)
 
 @InternalParsersApi
 public inline fun <T> List<T>.flatMapChapters(
-    reversed: Boolean = false,
-    transform: (T) -> Iterable<MangaChapter?>,
+	reversed: Boolean = false,
+	transform: (T) -> Iterable<MangaChapter?>,
 ): List<MangaChapter> {
 	val builder = ChaptersListBuilder(collectionSize())
 	val elements = if (reversed) this.asReversed() else this

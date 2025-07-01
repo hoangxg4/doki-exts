@@ -64,8 +64,8 @@ public abstract class MangaLoaderContext {
 	 * @param redraw lambda function to implement descrambling logic
 	 */
 	public abstract fun redrawImageResponse(
-        response: Response,
-        redraw: (image: Bitmap) -> Bitmap,
+		response: Response,
+		redraw: (image: Bitmap) -> Bitmap,
 	): Response
 
 	/**

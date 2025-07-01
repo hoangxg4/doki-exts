@@ -16,7 +16,7 @@ private const val KDF_DIGEST = "MD5"
  */
 @InternalParsersApi
 public class CryptoAES(
-    private val context: MangaLoaderContext,
+	private val context: MangaLoaderContext,
 ) {
 
 	/**

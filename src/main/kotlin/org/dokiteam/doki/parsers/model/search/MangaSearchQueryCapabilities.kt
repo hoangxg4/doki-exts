@@ -6,7 +6,7 @@ import org.dokiteam.doki.parsers.util.mapToSet
 
 @ExposedCopyVisibility
 public data class MangaSearchQueryCapabilities internal constructor(
-    public val capabilities: Set<SearchCapability>,
+	public val capabilities: Set<SearchCapability>,
 ) {
 
 	public constructor(vararg capabilities: SearchCapability) : this(ArraySet(capabilities))

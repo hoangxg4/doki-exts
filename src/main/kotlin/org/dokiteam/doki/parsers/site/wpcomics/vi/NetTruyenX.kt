@@ -2,21 +2,11 @@ package org.dokiteam.doki.parsers.site.wpcomics.vi
 
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import org.dokiteam.doki.parsers.model.Manga
-import org.dokiteam.doki.parsers.model.RATING_UNKNOWN
-import org.dokiteam.doki.parsers.util.generateUid
-import org.dokiteam.doki.parsers.util.mapNotNullToSet
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
-import org.dokiteam.doki.parsers.model.MangaChapter
-import org.dokiteam.doki.parsers.model.MangaState
+import org.dokiteam.doki.parsers.config.ConfigKey
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.site.wpcomics.WpComicsParser
-import org.dokiteam.doki.parsers.util.parseHtml
-import org.dokiteam.doki.parsers.util.parseJson
-import org.dokiteam.doki.parsers.util.textOrNull
-import org.dokiteam.doki.parsers.util.toAbsoluteUrl
-import org.dokiteam.doki.parsers.util.tryParse
 import org.dokiteam.doki.parsers.util.*
 import org.dokiteam.doki.parsers.util.json.getStringOrNull
 import java.text.SimpleDateFormat

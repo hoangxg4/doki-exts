@@ -9,7 +9,7 @@ import org.dokiteam.doki.parsers.model.search.QueryCriteria
 import org.dokiteam.doki.parsers.model.search.SearchableField
 
 public class RelatedMangaFinder(
-    private val parsers: Collection<MangaParser>,
+	private val parsers: Collection<MangaParser>,
 ) {
 
 	public suspend operator fun invoke(seed: Manga): List<Manga> = withContext(Dispatchers.Default) {

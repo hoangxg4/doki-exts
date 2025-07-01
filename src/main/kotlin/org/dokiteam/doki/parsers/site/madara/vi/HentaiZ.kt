@@ -2,22 +2,11 @@ package org.dokiteam.doki.parsers.site.madara.vi
 
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import org.dokiteam.doki.parsers.model.ContentRating
-import org.dokiteam.doki.parsers.model.Manga
-import org.dokiteam.doki.parsers.util.mapToSet
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.model.ContentType
-import org.dokiteam.doki.parsers.model.MangaState
-import org.dokiteam.doki.parsers.model.MangaTag
 import org.dokiteam.doki.parsers.model.MangaParserSource
 import org.dokiteam.doki.parsers.site.madara.MadaraParser
-import org.dokiteam.doki.parsers.util.parseHtml
-import org.dokiteam.doki.parsers.util.selectLast
-import org.dokiteam.doki.parsers.util.textOrNull
-import org.dokiteam.doki.parsers.util.toAbsoluteUrl
-import org.dokiteam.doki.parsers.util.toRelativeUrl
-import org.dokiteam.doki.parsers.util.toTitleCase
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import java.util.*

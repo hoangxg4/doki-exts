@@ -1,20 +1,14 @@
 package org.dokiteam.doki.parsers.site.liliana.vi
 
-import org.dokiteam.doki.parsers.util.generateUid
 import org.jsoup.Jsoup
 import org.dokiteam.doki.parsers.config.ConfigKey
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.model.MangaChapter
 import org.dokiteam.doki.parsers.model.MangaPage
-import org.dokiteam.doki.parsers.util.parseHtml
-import org.dokiteam.doki.parsers.util.parseJson
-import org.dokiteam.doki.parsers.util.toAbsoluteUrl
 import org.dokiteam.doki.parsers.model.MangaParserSource
 import org.dokiteam.doki.parsers.exception.ParseException
 import org.dokiteam.doki.parsers.site.liliana.LilianaParser
-import org.dokiteam.doki.parsers.util.selectFirstOrThrow
-import org.dokiteam.doki.parsers.util.selectOrThrow
 import org.dokiteam.doki.parsers.util.json.getBooleanOrDefault
 import org.dokiteam.doki.parsers.util.*
 

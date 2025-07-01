@@ -4,14 +4,9 @@ import okhttp3.HttpUrl
 import org.jsoup.nodes.Element
 import org.dokiteam.doki.parsers.ErrorMessages
 import org.dokiteam.doki.parsers.InternalParsersApi
-import org.dokiteam.doki.parsers.model.ContentType
 import org.dokiteam.doki.parsers.MangaParser
 import org.dokiteam.doki.parsers.core.LegacyMangaParser
 import org.dokiteam.doki.parsers.exception.ParseException
-import org.dokiteam.doki.parsers.model.ContentRating
-import org.dokiteam.doki.parsers.model.Demographic
-import org.dokiteam.doki.parsers.model.MangaState
-import org.dokiteam.doki.parsers.model.MangaTag
 import org.dokiteam.doki.parsers.model.*
 
 
@@ -24,7 +19,7 @@ import org.dokiteam.doki.parsers.model.*
  */
 @InternalParsersApi
 public fun MangaParser.generateUid(url: String): Long {
-	var h = org.dokiteam.doki.parsers.util.LONG_HASH_SEED
+	var h = LONG_HASH_SEED
 	source.name.forEach { c ->
 		h = 31 * h + c.code
 	}
@@ -43,7 +38,7 @@ public fun MangaParser.generateUid(url: String): Long {
  */
 @InternalParsersApi
 public fun MangaParser.generateUid(id: Long): Long {
-	var h = org.dokiteam.doki.parsers.util.LONG_HASH_SEED
+	var h = LONG_HASH_SEED
 	source.name.forEach { c ->
 		h = 31 * h + c.code
 	}
@@ -96,6 +91,6 @@ public fun LegacyMangaParser.getDomain(subdomain: String): String {
 @InternalParsersApi
 public fun MangaParser.urlBuilder(subdomain: String? = null): HttpUrl.Builder {
 	return HttpUrl.Builder()
-		.scheme(org.dokiteam.doki.parsers.util.SCHEME_HTTPS)
+		.scheme(SCHEME_HTTPS)
 		.host(if (subdomain == null) domain else "$subdomain.$domain")
 }

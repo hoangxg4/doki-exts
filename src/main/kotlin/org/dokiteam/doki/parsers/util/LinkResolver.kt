@@ -4,10 +4,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runInterruptible
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
-import org.dokiteam.doki.parsers.model.Manga
-import org.dokiteam.doki.parsers.model.MangaListFilter
-import org.dokiteam.doki.parsers.model.RATING_UNKNOWN
-import org.dokiteam.doki.parsers.model.SortOrder
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaParser
 import org.dokiteam.doki.parsers.core.LegacyMangaParser
@@ -15,8 +11,8 @@ import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.suspendlazy.suspendLazy
 
 public class LinkResolver internal constructor(
-    private val context: MangaLoaderContext,
-    public val link: HttpUrl,
+	private val context: MangaLoaderContext,
+	public val link: HttpUrl,
 ) {
 
 	private val source = suspendLazy(Dispatchers.Default, ::resolveSource)
@@ -42,10 +38,10 @@ public class LinkResolver internal constructor(
 	}
 
 	internal suspend fun resolveManga(
-        parser: MangaParser,
-        url: String = link.toString().toRelativeUrl(link.host),
-        id: Long = parser.generateUid(url),
-        title: String = STUB_TITLE,
+		parser: MangaParser,
+		url: String = link.toString().toRelativeUrl(link.host),
+		id: Long = parser.generateUid(url),
+		title: String = STUB_TITLE,
 	): Manga? = resolveBySeed(
 		parser,
 		Manga(
@@ -112,13 +108,13 @@ public class LinkResolver internal constructor(
 
 	private fun MangaParser.bestSortOrder(): SortOrder {
 		val supported = availableSortOrders
-		if (org.dokiteam.doki.parsers.model.SortOrder.RELEVANCE in supported) {
-			return org.dokiteam.doki.parsers.model.SortOrder.RELEVANCE
+		if (SortOrder.RELEVANCE in supported) {
+			return SortOrder.RELEVANCE
 		}
 		if (this is LegacyMangaParser) {
 			return defaultSortOrder
 		}
-		return org.dokiteam.doki.parsers.model.SortOrder.entries.first { it in supported }
+		return SortOrder.entries.first { it in supported }
 	}
 
 	private companion object {

@@ -11,43 +11,7 @@ import org.dokiteam.doki.parsers.MangaParserAuthProvider
 import org.dokiteam.doki.parsers.config.ConfigKey
 import org.dokiteam.doki.parsers.core.LegacyPagedMangaParser
 import org.dokiteam.doki.parsers.exception.AuthRequiredException
-import org.dokiteam.doki.parsers.model.Manga
-import org.dokiteam.doki.parsers.model.MangaListFilter
-import org.dokiteam.doki.parsers.model.MangaPage
-import org.dokiteam.doki.parsers.model.RATING_UNKNOWN
-import org.dokiteam.doki.parsers.model.SortOrder
-import org.dokiteam.doki.parsers.model.WordSet
-import org.dokiteam.doki.parsers.util.CryptoAES
-import org.dokiteam.doki.parsers.util.generateUid
-import org.dokiteam.doki.parsers.util.getCookies
-import org.dokiteam.doki.parsers.util.mapChapters
-import org.dokiteam.doki.parsers.util.mapNotNullToSet
-import org.dokiteam.doki.parsers.util.mapToSet
-import org.dokiteam.doki.parsers.util.oneOrThrowIfMany
-import org.dokiteam.doki.parsers.util.parseFailed
-import org.dokiteam.doki.parsers.util.parseHtml
-import org.dokiteam.doki.parsers.util.removeSuffix
-import org.dokiteam.doki.parsers.util.toAbsoluteUrl
-import org.dokiteam.doki.parsers.util.toMutableMap
-import org.dokiteam.doki.parsers.util.toRelativeUrl
-import org.dokiteam.doki.parsers.util.toTitleCase
-import org.dokiteam.doki.parsers.util.tryParse
-import org.dokiteam.doki.parsers.util.urlEncoded
 import org.dokiteam.doki.parsers.exception.ParseException
-import org.dokiteam.doki.parsers.model.ContentRating
-import org.dokiteam.doki.parsers.model.MangaChapter
-import org.dokiteam.doki.parsers.model.MangaListFilterCapabilities
-import org.dokiteam.doki.parsers.model.MangaListFilterOptions
-import org.dokiteam.doki.parsers.model.MangaState
-import org.dokiteam.doki.parsers.model.MangaTag
-import org.dokiteam.doki.parsers.util.attrAsRelativeUrl
-import org.dokiteam.doki.parsers.util.host
-import org.dokiteam.doki.parsers.util.requireSrc
-import org.dokiteam.doki.parsers.util.selectFirstOrThrow
-import org.dokiteam.doki.parsers.util.selectLast
-import org.dokiteam.doki.parsers.util.selectOrThrow
-import org.dokiteam.doki.parsers.util.src
-import org.dokiteam.doki.parsers.util.textOrNull
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import java.text.DateFormat
@@ -55,10 +19,10 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 internal abstract class MadaraParser(
-    context: MangaLoaderContext,
-    source: MangaParserSource,
-    domain: String,
-    pageSize: Int = 12,
+	context: MangaLoaderContext,
+	source: MangaParserSource,
+	domain: String,
+	pageSize: Int = 12,
 ) : LegacyPagedMangaParser(context, source, pageSize), MangaParserAuthProvider {
 
 	override val configKeyDomain = ConfigKey.Domain(domain)

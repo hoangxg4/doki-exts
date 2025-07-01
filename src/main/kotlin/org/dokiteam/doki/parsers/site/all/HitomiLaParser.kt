@@ -7,42 +7,18 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okhttp3.Headers
-import org.dokiteam.doki.parsers.model.ContentType
-import org.dokiteam.doki.parsers.model.Manga
-import org.dokiteam.doki.parsers.model.MangaListFilter
-import org.dokiteam.doki.parsers.model.MangaPage
-import org.dokiteam.doki.parsers.model.RATING_UNKNOWN
-import org.dokiteam.doki.parsers.model.SortOrder
-import org.dokiteam.doki.parsers.util.generateUid
-import org.dokiteam.doki.parsers.util.parseBytes
-import org.dokiteam.doki.parsers.util.parseHtml
-import org.dokiteam.doki.parsers.util.parseRaw
-import org.dokiteam.doki.parsers.util.runCatchingCancellable
-import org.dokiteam.doki.parsers.util.splitByWhitespace
 import org.json.JSONArray
 import org.json.JSONObject
 import org.jsoup.Jsoup
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
-import org.dokiteam.doki.parsers.model.ContentRating
-import org.dokiteam.doki.parsers.model.MangaChapter
-import org.dokiteam.doki.parsers.model.MangaListFilterCapabilities
-import org.dokiteam.doki.parsers.model.MangaListFilterOptions
-import org.dokiteam.doki.parsers.model.MangaTag
-import org.dokiteam.doki.parsers.util.attrAsRelativeUrl
-import org.dokiteam.doki.parsers.util.selectFirstOrThrow
 import org.dokiteam.doki.parsers.core.LegacyMangaParser
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import org.dokiteam.doki.parsers.util.json.getStringOrNull
 import org.dokiteam.doki.parsers.util.json.mapJSON
 import org.dokiteam.doki.parsers.util.suspendlazy.suspendLazy
-import org.dokiteam.doki.parsers.util.toAbsoluteUrl
-import org.dokiteam.doki.parsers.util.toCamelCase
-import org.dokiteam.doki.parsers.util.toTitleCase
-import org.dokiteam.doki.parsers.util.tryParse
-import org.dokiteam.doki.parsers.util.urlDecode
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.security.MessageDigest
@@ -221,9 +197,9 @@ internal class HitomiLaParser(context: MangaLoaderContext) : LegacyMangaParser(c
 	}
 
 	private suspend fun hitomiSearch(
-        query: String,
-        sortByPopularity: SortOrder = SortOrder.UPDATED,
-        language: String = "all",
+		query: String,
+		sortByPopularity: SortOrder = SortOrder.UPDATED,
+		language: String = "all",
 	): Set<Int> =
 		coroutineScope {
 			val terms = query
@@ -367,8 +343,8 @@ internal class HitomiLaParser(context: MangaLoaderContext) : LegacyMangaParser(c
 	}
 
 	private suspend fun bSearch(
-        key: UByteArray,
-        node: Node,
+		key: UByteArray,
+		node: Node,
 	): Pair<Long, Int>? {
 		fun compareArrayBuffers(
 			dv1: UByteArray,
@@ -388,8 +364,8 @@ internal class HitomiLaParser(context: MangaLoaderContext) : LegacyMangaParser(c
 		}
 
 		fun locateKey(
-            key: UByteArray,
-            node: Node,
+			key: UByteArray,
+			node: Node,
 		): Pair<Boolean, Int> {
 			for (i in node.keys.indices) {
 				val cmpResult = compareArrayBuffers(key, node.keys[i])

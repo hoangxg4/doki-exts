@@ -1,27 +1,9 @@
 package org.dokiteam.doki.parsers.site.all
 
-import org.dokiteam.doki.parsers.model.RATING_UNKNOWN
-import org.dokiteam.doki.parsers.util.generateUid
-import org.dokiteam.doki.parsers.util.mapToSet
-import org.dokiteam.doki.parsers.util.parseFailed
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
 import org.dokiteam.doki.parsers.core.LegacyPagedMangaParser
-import org.dokiteam.doki.parsers.model.ContentRating
-import org.dokiteam.doki.parsers.model.ContentType
-import org.dokiteam.doki.parsers.model.Manga
-import org.dokiteam.doki.parsers.model.MangaChapter
-import org.dokiteam.doki.parsers.model.MangaListFilter
-import org.dokiteam.doki.parsers.model.MangaListFilterCapabilities
-import org.dokiteam.doki.parsers.model.MangaListFilterOptions
-import org.dokiteam.doki.parsers.model.MangaPage
-import org.dokiteam.doki.parsers.model.MangaTag
-import org.dokiteam.doki.parsers.model.SortOrder
-import org.dokiteam.doki.parsers.util.attrAsRelativeUrl
-import org.dokiteam.doki.parsers.util.parseHtml
-import org.dokiteam.doki.parsers.util.toAbsoluteUrl
-import org.dokiteam.doki.parsers.util.urlEncoded
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import java.util.*

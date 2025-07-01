@@ -4,19 +4,19 @@ import java.util.*
 
 @Deprecated("Please check new searchManga method and MangaSearchQuery class")
 public data class MangaListFilter(
-    @JvmField val query: String? = null,
-    @JvmField val tags: Set<MangaTag> = emptySet(),
-    @JvmField val tagsExclude: Set<MangaTag> = emptySet(),
-    @JvmField val locale: Locale? = null,
-    @JvmField val originalLocale: Locale? = null,
-    @JvmField val states: Set<MangaState> = emptySet(),
-    @JvmField val contentRating: Set<ContentRating> = emptySet(),
-    @JvmField val types: Set<ContentType> = emptySet(),
-    @JvmField val demographics: Set<Demographic> = emptySet(),
-    @JvmField val year: Int = YEAR_UNKNOWN,
-    @JvmField val yearFrom: Int = YEAR_UNKNOWN,
-    @JvmField val yearTo: Int = YEAR_UNKNOWN,
-    @JvmField val author: String? = null,
+	@JvmField val query: String? = null,
+	@JvmField val tags: Set<MangaTag> = emptySet(),
+	@JvmField val tagsExclude: Set<MangaTag> = emptySet(),
+	@JvmField val locale: Locale? = null,
+	@JvmField val originalLocale: Locale? = null,
+	@JvmField val states: Set<MangaState> = emptySet(),
+	@JvmField val contentRating: Set<ContentRating> = emptySet(),
+	@JvmField val types: Set<ContentType> = emptySet(),
+	@JvmField val demographics: Set<Demographic> = emptySet(),
+	@JvmField val year: Int = YEAR_UNKNOWN,
+	@JvmField val yearFrom: Int = YEAR_UNKNOWN,
+	@JvmField val yearTo: Int = YEAR_UNKNOWN,
+	@JvmField val author: String? = null,
 ) {
 
 	private fun isNonSearchOptionsEmpty(): Boolean = tags.isEmpty() &&

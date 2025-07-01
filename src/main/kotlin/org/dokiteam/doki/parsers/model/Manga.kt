@@ -5,67 +5,67 @@ import org.dokiteam.doki.parsers.util.findById
 import org.dokiteam.doki.parsers.util.nullIfEmpty
 
 public data class Manga(
-    /**
+	/**
 	 * Unique identifier for manga
 	 */
 	@JvmField public val id: Long,
-    /**
+	/**
 	 * Manga title, human-readable
 	 */
 	@JvmField public val title: String,
-    /**
+	/**
 	 * Alternative titles (for example on other language), may be empty
 	 */
 	@JvmField public val altTitles: Set<String>,
-    /**
+	/**
 	 * Relative url to manga (**without** a domain) or any other uri.
 	 * Used principally in parsers
 	 */
 	@JvmField public val url: String,
-    /**
+	/**
 	 * Absolute url to manga, must be ready to open in browser
 	 */
 	@JvmField public val publicUrl: String,
-    /**
+	/**
 	 * Normalized manga rating, must be in range of 0..1 or [RATING_UNKNOWN] if rating s unknown
 	 * @see hasRating
 	 */
 	@JvmField public val rating: Float,
-    /**
+	/**
 	 * Indicates that manga may contain sensitive information (18+, NSFW)
 	 */
 	@JvmField public val contentRating: ContentRating?,
-    /**
+	/**
 	 * Absolute link to the cover
 	 * @see largeCoverUrl
 	 */
 	@JvmField public val coverUrl: String?,
-    /**
+	/**
 	 * Tags (genres) of the manga
 	 */
 	@JvmField public val tags: Set<MangaTag>,
-    /**
+	/**
 	 * Manga status (ongoing, finished) or null if unknown
 	 */
 	@JvmField public val state: MangaState?,
-    /**
+	/**
 	 * Authors of the manga
 	 */
 	@JvmField public val authors: Set<String>,
-    /**
+	/**
 	 * Large cover url (absolute), null if is no large cover
 	 * @see coverUrl
 	 */
 	@JvmField public val largeCoverUrl: String? = null,
-    /**
+	/**
 	 * Manga description, may be html or null
 	 */
 	@JvmField public val description: String? = null,
-    /**
+	/**
 	 * List of chapters
 	 */
 	@JvmField public val chapters: List<MangaChapter>? = null,
-    /**
+	/**
 	 * Manga source
 	 */
 	@JvmField public val source: MangaSource,
@@ -73,67 +73,67 @@ public data class Manga(
 
 	@Deprecated("Use other constructor")
 	public constructor(
-        /**
+		/**
 		 * Unique identifier for manga
 		 */
 		id: Long,
-        /**
+		/**
 		 * Manga title, human-readable
 		 */
 		title: String,
-        /**
+		/**
 		 * Alternative title (for example on other language), may be null
 		 */
 		altTitle: String?,
-        /**
+		/**
 		 * Relative url to manga (**without** a domain) or any other uri.
 		 * Used principally in parsers
 		 */
 		url: String,
-        /**
+		/**
 		 * Absolute url to manga, must be ready to open in browser
 		 */
 		publicUrl: String,
-        /**
+		/**
 		 * Normalized manga rating, must be in range of 0..1 or [RATING_UNKNOWN] if rating s unknown
 		 * @see hasRating
 		 */
 		rating: Float,
-        /**
+		/**
 		 * Indicates that manga may contain sensitive information (18+, NSFW)
 		 */
 		isNsfw: Boolean,
-        /**
+		/**
 		 * Absolute link to the cover
 		 * @see largeCoverUrl
 		 */
 		coverUrl: String?,
-        /**
+		/**
 		 * Tags (genres) of the manga
 		 */
 		tags: Set<MangaTag>,
-        /**
+		/**
 		 * Manga status (ongoing, finished) or null if unknown
 		 */
 		state: MangaState?,
-        /**
+		/**
 		 * Authors of the manga
 		 */
 		author: String?,
-        /**
+		/**
 		 * Large cover url (absolute), null if is no large cover
 		 * @see coverUrl
 		 */
 		largeCoverUrl: String? = null,
-        /**
+		/**
 		 * Manga description, may be html or null
 		 */
 		description: String? = null,
-        /**
+		/**
 		 * List of chapters
 		 */
 		chapters: List<MangaChapter>? = null,
-        /**
+		/**
 		 * Manga source
 		 */
 		source: MangaSource,

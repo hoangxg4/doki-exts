@@ -1,8 +1,8 @@
 package org.dokiteam.doki.parsers.model
 
 public class Favicons(
-    favicons: Collection<Favicon>,
-    @JvmField public val referer: String?,
+	favicons: Collection<Favicon>,
+	@JvmField public val referer: String?,
 ) : Collection<Favicon> {
 
 	private val icons = favicons.sortedDescending()

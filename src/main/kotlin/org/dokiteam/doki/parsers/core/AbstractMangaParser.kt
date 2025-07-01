@@ -5,17 +5,10 @@ import okhttp3.Headers
 import okhttp3.HttpUrl
 import okhttp3.Interceptor
 import okhttp3.Response
-import org.dokiteam.doki.parsers.model.Manga
 import org.dokiteam.doki.parsers.InternalParsersApi
-import org.dokiteam.doki.parsers.model.ContentType
-import org.dokiteam.doki.parsers.model.MangaPage
-import org.dokiteam.doki.parsers.model.SortOrder
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaParser
 import org.dokiteam.doki.parsers.config.ConfigKey
-import org.dokiteam.doki.parsers.model.ContentRating
-import org.dokiteam.doki.parsers.model.Favicons
-import org.dokiteam.doki.parsers.model.MangaListFilterCapabilities
 import org.dokiteam.doki.parsers.config.MangaSourceConfig
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.network.OkHttpWebClient
@@ -28,8 +21,8 @@ import java.util.*
 
 @InternalParsersApi
 public abstract class AbstractMangaParser @InternalParsersApi constructor(
-    @property:InternalParsersApi public val context: MangaLoaderContext,
-    public final override val source: MangaParserSource,
+	@property:InternalParsersApi public val context: MangaLoaderContext,
+	public final override val source: MangaParserSource,
 ) : MangaParser {
 
 	public override val config: MangaSourceConfig by lazy { context.getConfig(source) }

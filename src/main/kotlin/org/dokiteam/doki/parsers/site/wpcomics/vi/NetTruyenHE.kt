@@ -2,23 +2,11 @@ package org.dokiteam.doki.parsers.site.wpcomics.vi
 
 import androidx.collection.ArrayMap
 import kotlinx.coroutines.sync.withLock
-import org.dokiteam.doki.parsers.model.Manga
-import org.dokiteam.doki.parsers.model.MangaListFilter
-import org.dokiteam.doki.parsers.model.MangaState
-import org.dokiteam.doki.parsers.model.MangaTag
-import org.dokiteam.doki.parsers.model.SortOrder
-import org.dokiteam.doki.parsers.util.oneOrThrowIfMany
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.exception.NotFoundException
-import org.dokiteam.doki.parsers.model.MangaListFilterCapabilities
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.site.wpcomics.WpComicsParser
-import org.dokiteam.doki.parsers.util.parseHtml
-import org.dokiteam.doki.parsers.util.runCatchingCancellable
-import org.dokiteam.doki.parsers.util.selectFirstOrThrow
-import org.dokiteam.doki.parsers.util.toAbsoluteUrl
-import org.dokiteam.doki.parsers.util.urlEncoded
 import org.dokiteam.doki.parsers.util.*
 import java.util.*
 

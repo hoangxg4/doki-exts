@@ -27,8 +27,8 @@ public sealed interface QueryCriteria<T> {
 	 * ```
 	 */
 	public data class Include<T : Any>(
-        public override val field: SearchableField,
-        @JvmField public val values: Set<T>,
+		public override val field: SearchableField,
+		@JvmField public val values: Set<T>,
 	) : QueryCriteria<T> {
 
 		init {
@@ -48,8 +48,8 @@ public sealed interface QueryCriteria<T> {
 	 * ```
 	 */
 	public data class Exclude<T : Any>(
-        public override val field: SearchableField,
-        @JvmField public val values: Set<T>,
+		public override val field: SearchableField,
+		@JvmField public val values: Set<T>,
 	) : QueryCriteria<T> {
 
 		init {
@@ -70,9 +70,9 @@ public sealed interface QueryCriteria<T> {
 	 * ```
 	 */
 	public data class Range<T : Comparable<T>>(
-        public override val field: SearchableField,
-        @JvmField public val from: T,
-        @JvmField public val to: T,
+		public override val field: SearchableField,
+		@JvmField public val from: T,
+		@JvmField public val to: T,
 	) : QueryCriteria<T> {
 
 		init {
@@ -94,8 +94,8 @@ public sealed interface QueryCriteria<T> {
 	 * ```
 	 */
 	public data class Match<T : Any>(
-        public override val field: SearchableField,
-        @JvmField public val value: T,
+		public override val field: SearchableField,
+		@JvmField public val value: T,
 	) : QueryCriteria<T> {
 
 		init {

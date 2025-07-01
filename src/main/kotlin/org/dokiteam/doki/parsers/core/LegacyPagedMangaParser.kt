@@ -11,10 +11,10 @@ import org.dokiteam.doki.parsers.util.Paginator
 
 @InternalParsersApi
 public abstract class LegacyPagedMangaParser(
-    context: MangaLoaderContext,
-    source: MangaParserSource,
-    @VisibleForTesting(otherwise = VisibleForTesting.PROTECTED) @JvmField public val pageSize: Int,
-    searchPageSize: Int = pageSize,
+	context: MangaLoaderContext,
+	source: MangaParserSource,
+	@VisibleForTesting(otherwise = VisibleForTesting.PROTECTED) @JvmField public val pageSize: Int,
+	searchPageSize: Int = pageSize,
 ) : LegacyMangaParser(context, source) {
 
 	@JvmField
@@ -44,10 +44,10 @@ public abstract class LegacyPagedMangaParser(
 	}
 
 	private suspend fun getList(
-        paginator: Paginator,
-        offset: Int,
-        order: SortOrder,
-        filter: MangaListFilter,
+		paginator: Paginator,
+		offset: Int,
+		order: SortOrder,
+		filter: MangaListFilter,
 	): List<Manga> {
 		val page = paginator.getPage(offset)
 		val list = getListPage(page, order, filter)

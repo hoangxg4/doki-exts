@@ -6,8 +6,8 @@ import kotlinx.coroutines.withContext
 import kotlin.coroutines.CoroutineContext
 
 internal class SuspendLazyImpl<T>(
-    private val coroutineContext: CoroutineContext,
-    private val initializer: SuspendLazyInitializer<T>,
+	private val coroutineContext: CoroutineContext,
+	private val initializer: SuspendLazyInitializer<T>,
 ) : SuspendLazy<T> {
 
 	private val mutex: Mutex = Mutex()

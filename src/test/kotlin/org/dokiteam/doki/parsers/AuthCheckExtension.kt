@@ -1,8 +1,6 @@
 package org.dokiteam.doki.parsers
 
 import kotlinx.coroutines.test.runTest
-import org.dokiteam.doki.parsers.MangaLoaderContext
-import org.dokiteam.doki.parsers.MangaParserAuthProvider
 import org.junit.jupiter.api.extension.BeforeAllCallback
 import org.junit.jupiter.api.extension.ExtensionContext
 import org.dokiteam.doki.parsers.model.MangaParserSource

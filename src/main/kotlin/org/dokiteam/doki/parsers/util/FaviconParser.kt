@@ -9,8 +9,8 @@ import org.dokiteam.doki.parsers.network.WebClient
 import org.dokiteam.doki.parsers.util.json.mapJSON
 
 public class FaviconParser(
-    private val webClient: WebClient,
-    private val domain: String,
+	private val webClient: WebClient,
+	private val domain: String,
 ) {
 
 	public suspend fun parseFavicons(): Favicons = withContext(Dispatchers.Default) {

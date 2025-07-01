@@ -11,10 +11,10 @@ import org.dokiteam.doki.parsers.util.Paginator
 
 @InternalParsersApi
 public abstract class PagedMangaParser(
-    context: MangaLoaderContext,
-    source: MangaParserSource,
-    @VisibleForTesting(otherwise = VisibleForTesting.PROTECTED) @JvmField public val pageSize: Int,
-    searchPageSize: Int = pageSize,
+	context: MangaLoaderContext,
+	source: MangaParserSource,
+	@VisibleForTesting(otherwise = VisibleForTesting.PROTECTED) @JvmField public val pageSize: Int,
+	searchPageSize: Int = pageSize,
 ) : AbstractMangaParser(context, source) {
 
 	@JvmField
@@ -49,8 +49,8 @@ public abstract class PagedMangaParser(
 	}
 
 	private suspend fun searchManga(
-        paginator: Paginator,
-        query: MangaSearchQuery,
+		paginator: Paginator,
+		query: MangaSearchQuery,
 	): List<Manga> {
 		val offset: Int = query.offset
 		val page = paginator.getPage(offset)

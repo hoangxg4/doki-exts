@@ -15,10 +15,10 @@ import org.dokiteam.doki.parsers.model.SortOrder
 
 @ConsistentCopyVisibility
 public data class MangaSearchQuery private constructor(
-    @JvmField public val criteria: Set<QueryCriteria<*>>,
-    @JvmField public val order: SortOrder?,
-    @JvmField public val offset: Int,
-    @JvmField public val skipValidation: Boolean,
+	@JvmField public val criteria: Set<QueryCriteria<*>>,
+	@JvmField public val order: SortOrder?,
+	@JvmField public val offset: Int,
+	@JvmField public val skipValidation: Boolean,
 ) {
 
 	public fun newBuilder(): Builder = Builder(this)
@@ -64,18 +64,12 @@ public data class MangaSearchQuery private constructor(
 
 					existing is QueryCriteria.Include<*> && criterion is QueryCriteria.Include<*> -> {
 						uniqueCriteria[key] =
-                            QueryCriteria.Include(
-                                criterion.field,
-                                existing.values union criterion.values
-                            )
+							QueryCriteria.Include(criterion.field, existing.values union criterion.values)
 					}
 
 					existing is QueryCriteria.Exclude<*> && criterion is QueryCriteria.Exclude<*> -> {
 						uniqueCriteria[key] =
-                            QueryCriteria.Exclude(
-                                criterion.field,
-                                existing.values union criterion.values
-                            )
+							QueryCriteria.Exclude(criterion.field, existing.values union criterion.values)
 					}
 
 					else -> throw IllegalArgumentException(

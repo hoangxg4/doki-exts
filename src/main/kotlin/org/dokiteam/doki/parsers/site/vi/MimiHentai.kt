@@ -1,32 +1,10 @@
 package org.dokiteam.doki.parsers.site.vi
 
-import org.dokiteam.doki.parsers.model.RATING_UNKNOWN
-import org.dokiteam.doki.parsers.util.generateUid
 import org.json.JSONArray
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
 import org.dokiteam.doki.parsers.core.LegacyPagedMangaParser
-import org.dokiteam.doki.parsers.model.ContentRating
-import org.dokiteam.doki.parsers.model.ContentType
-import org.dokiteam.doki.parsers.model.Manga
-import org.dokiteam.doki.parsers.model.MangaChapter
-import org.dokiteam.doki.parsers.model.MangaListFilter
-import org.dokiteam.doki.parsers.model.MangaListFilterCapabilities
-import org.dokiteam.doki.parsers.model.MangaListFilterOptions
-import org.dokiteam.doki.parsers.model.MangaPage
-import org.dokiteam.doki.parsers.model.MangaTag
-import org.dokiteam.doki.parsers.model.SortOrder
-import org.dokiteam.doki.parsers.util.json.asTypedList
-import org.dokiteam.doki.parsers.util.json.getFloatOrDefault
-import org.dokiteam.doki.parsers.util.json.getStringOrNull
-import org.dokiteam.doki.parsers.util.json.mapJSON
-import org.dokiteam.doki.parsers.util.json.mapJSONToSet
-import org.dokiteam.doki.parsers.util.parseJson
-import org.dokiteam.doki.parsers.util.parseJsonArray
-import org.dokiteam.doki.parsers.util.toAbsoluteUrl
-import org.dokiteam.doki.parsers.util.toTitleCase
-import org.dokiteam.doki.parsers.util.urlEncoded
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import org.dokiteam.doki.parsers.util.json.*
@@ -118,9 +96,9 @@ internal class MimiHentai(context: MangaLoaderContext) :
                     when (order) {
                         SortOrder.UPDATED -> "updated_at"
                         SortOrder.ALPHABETICAL -> "title"
-                        SortOrder.POPULARITY,
-                        SortOrder.POPULARITY_TODAY,
-                        SortOrder.POPULARITY_WEEK,
+                        SortOrder.POPULARITY, 
+                        SortOrder.POPULARITY_TODAY, 
+                        SortOrder.POPULARITY_WEEK, 
                         SortOrder.POPULARITY_MONTH -> "views"
                         SortOrder.RATING -> "likes"
                         else -> ""

@@ -17,9 +17,9 @@ class BitmapTestImpl(
 		get() = image.height
 
 	override fun drawBitmap(
-        sourceBitmap: Bitmap,
-        src: Rect,
-        dst: Rect,
+		sourceBitmap: Bitmap,
+		src: Rect,
+		dst: Rect,
 	) {
 		val graphics = image.createGraphics()
 		val subImage = (sourceBitmap as BitmapTestImpl).image.getSubimage(
