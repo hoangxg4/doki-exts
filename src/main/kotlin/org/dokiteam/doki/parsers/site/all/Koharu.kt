@@ -2,7 +2,7 @@ package org.dokiteam.doki.parsers.site.all
 
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.json.JSONObject
-import org.dokiteam.doki.parsers.Broken
+import org.jsoup.HttpStatusException
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
@@ -17,17 +17,18 @@ import org.dokiteam.doki.parsers.util.json.getStringOrNull
 import org.dokiteam.doki.parsers.util.json.mapJSONNotNullToSet
 import org.dokiteam.doki.parsers.util.suspendlazy.getOrDefault
 import org.dokiteam.doki.parsers.util.suspendlazy.suspendLazy
+import java.net.HttpURLConnection
 import java.text.SimpleDateFormat
 import java.util.*
 
-@Broken("Need fix getPages")
-@MangaSourceParser("KOHARU", "Schale Network", type = ContentType.HENTAI)
+@MangaSourceParser("KOHARU", "Schale.network", type = ContentType.HENTAI)
 internal class Koharu(context: MangaLoaderContext) :
 	LegacyPagedMangaParser(context, MangaParserSource.KOHARU, 24) {
 
 	override val configKeyDomain = ConfigKey.Domain("niyaniya.moe")
 	private val apiSuffix = "api.schale.network"
-	override val userAgentKey = ConfigKey.UserAgent(UserAgents.CHROME_MOBILE)
+
+	override val userAgentKey = ConfigKey.UserAgent(UserAgents.KOHARU)
 
 	private val authorsIds = suspendLazy { fetchAuthorsIds() }
 
@@ -131,213 +132,6 @@ internal class Koharu(context: MangaLoaderContext) :
 			}
 
 			if (includedTags.isNotEmpty()) {
-				append("&include=").append(includedTags.joinToString(","))
-				append("&i=1")
-			}
-
-			append("&page=").append(page)
-
-			if (terms.isNotEmpty()) {
-				append("&s=").append(terms.joinToString(" ").urlEncoded())
-			}
-		}
-
-		val json = webClient.httpGet(url).parseJson()
-		json.getStringOrNull("error")?.let {
-			throw ParseException(it, url)
-		}
-		json.getStringOrNull("message")?.let {
-			throw ParseException(it, url)
-		}
-		return parseMangaList(json)
-	}
-
-	private fun parseMangaList(json: JSONObject): List<Manga> {
-		val entries = json.optJSONArray("entries") ?: return emptyList()
-		val results = ArrayList<Manga>(entries.length())
-
-		for (i in 0 until entries.length()) {
-			val entry = entries.getJSONObject(i)
-			val id = entry.getLong("id")
-			val key = entry.getString("key")
-			val url = "$id/$key"
-
-			results.add(
-				Manga(
-					id = generateUid(id),
-					url = url,
-					publicUrl = "https://$domain/g/$url",
-					title = entry.getString("title"),
-					altTitles = emptySet(),
-					authors = emptySet(),
-					tags = emptySet(),
-					rating = RATING_UNKNOWN,
-					state = null,
-					coverUrl = entry.getJSONObject("thumbnail").getString("path"),
-					contentRating = ContentRating.ADULT,
-					source = source,
-				),
-			)
-		}
-
-		return results
-	}
-
-	private fun parseMangaDetail(json: JSONObject): Manga {
-		val data = json.getJSONObject("data")
-		val id = data.getLong("id")
-		val key = data.getString("key")
-		val url = "$id/$key"
-
-		var author: String? = null
-		val tags = data.optJSONArray("tags")
-		if (tags != null) {
-			for (i in 0 until tags.length()) {
-				val tag = tags.getJSONObject(i)
-				if (tag.getInt("namespace") == 1) {
-					author = tag.getString("name")
-					break
-				}
-			}
-		}
-
-		return Manga(
-			id = generateUid(id),
-			url = url,
-			publicUrl = "https://$domain/g/$url",
-			title = data.getString("title"),
-			altTitles = emptySet(),
-			authors = setOfNotNull(author),
-			tags = emptySet(),
-			rating = RATING_UNKNOWN,
-			state = null,
-			coverUrl = data.getJSONObject("thumbnails").getJSONObject("main").getString("path"),
-			contentRating = ContentRating.ADULT,
-			source = source,
-		)
-	}
-
-	override suspend fun getDetails(manga: Manga): Manga {
-		val url = manga.url
-		val response = webClient.httpGet("https://$apiSuffix/books/detail/$url").parseJson()
-
-		val id = response.getLong("id")
-		val key = response.getString("key")
-		val mangaUrl = "$id/$key"
-
-		val tagsList = mutableSetOf<MangaTag>()
-		var author: String? = null
-		val tags = response.optJSONArray("tags")
-
-		if (tags != null) {
-			for (i in 0 until tags.length()) {
-				val tag = tags.getJSONObject(i)
-				if (tag.has("namespace")) {
-					val namespace = tag.getInt("namespace")
-					val tagName = tag.getString("name")
-
-					when (namespace) {
-						1 -> {
-							author = tagName
-						}
-
-						0, 3, 8, 9, 10, 12 -> {
-							tagsList.add(
-								MangaTag(
-									key = tagName,
-									title = tagName.toTitleCase(sourceLocale),
-									source = source,
-								),
-							)
-						}
-					}
-				} else {
-					val tagName = tag.getString("name")
-					tagsList.add(
-						MangaTag(
-							key = tagName,
-							title = tagName.toTitleCase(sourceLocale),
-							source = source,
-						),
-					)
-				}
-			}
-		}
-
-		val description = buildString {
-			val created = response.getLongOrDefault("created_at", 0L)
-			if (created > 0) {
-				append("<b>Posted:</b> ").append(SimpleDateFormat("yyyy-MM-dd", Locale.US).format(created)).append("\n")
-			}
-
-			val thumbnails = response.getJSONObject("thumbnails")
-			val pageCount = thumbnails.optJSONArray("entries")?.length() ?: 0
-			append("<b>Pages:</b> ").append(pageCount)
-		}
-
-		val thumbnails = response.getJSONObject("thumbnails")
-		val base = thumbnails.getString("base")
-		val mainPath = thumbnails.getJSONObject("main").getString("path")
-		val coverUrl = base + mainPath
-
-		return Manga(
-			id = generateUid(id),
-			url = mangaUrl,
-			publicUrl = "https://$domain/g/$mangaUrl",
-			title = response.getString("title"),
-			altTitles = emptySet(),
-			authors = setOfNotNull(author),
-			tags = tagsList,
-			rating = RATING_UNKNOWN,
-			state = MangaState.FINISHED,
-			description = description,
-			coverUrl = coverUrl,
-			contentRating = ContentRating.ADULT,
-			source = source,
-			chapters = listOf(
-				MangaChapter(
-					id = generateUid("$mangaUrl/chapter"),
-					title = null,
-					number = 1f,
-					url = mangaUrl,
-					scanlator = null,
-					uploadDate = response.getLongOrDefault("created_at", 0L),
-					branch = null,
-					source = source,
-					volume = 0,
-				),
-			),
-		)
-	}
-
-	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-		val mangaUrl = chapter.url
-		val parts = mangaUrl.split('/')
-		if (parts.size < 2) {
-			throw ParseException("Invalid URL", mangaUrl)
-		}
-
-		val id = parts[0]
-		val key = parts[1]
-
-		val clearance = getClearance(chapter.url)
-
-		val dataUrl = "https://$apiSuffix/books/detail/$id/$key?crt=$clearance"
-		val dataResponse = webClient.httpPost(
-			url = dataUrl.toHttpUrl(),
-			form = emptyMap(),
-			extraHeaders = getRequestHeaders(),
-		).parseJson()
-
-		val data = try {
-			dataResponse.getJSONObject("data").getJSONObject("data")
-		} catch (e: Exception) {
-			throw ParseException("Cant parse image data. Token may be invalid or expired: ${e.message}", dataUrl, e)
-		}
-
-		val preferredRes = config[preferredImageResolutionKey] ?: "1280"
-		val resolutionOrder = when (preferredRes) {
-			"1600" -> listOf("1600", "1280", "0", "980", "780")
 			"1280" -> listOf("1280", "1600", "0", "980", "780")
 			"980" -> listOf("980", "1280", "0", "1600", "780")
 			"780" -> listOf("780", "980", "0", "1280", "1600")
@@ -406,7 +200,9 @@ internal class Koharu(context: MangaLoaderContext) :
 	private suspend fun fetchAuthorsIds(): Map<String, String> = fetchTags(namespace = 1)
 		.associate { it.title.lowercase() to it.key }
 
-	private suspend fun getClearance(mangaId: String): String = WebViewHelper(context)
+	private suspend fun getClearance(chapterUrl: String): String = WebViewHelper(context)
 		.getLocalStorageValue(domain, "clearance")?.removeSurrounding('"')?.nullIfEmpty()
-		?: context.requestBrowserAction(this, "https://$domain/g/$mangaId/read/1")
+		?: context.requestBrowserAction(this, chapterUrl)
+
+	private fun MangaChapter.publicUrl() = "https://$domain/g/$url/read/1"
 }
