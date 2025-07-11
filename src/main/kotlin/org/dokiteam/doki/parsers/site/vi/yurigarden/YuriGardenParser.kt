@@ -173,19 +173,19 @@ internal abstract class YuriGardenParser(
 	}
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-            val json = webClient.httpGet("https://$apiSuffix/chapters/${chapter.url}").parseJson()
+      	val json = webClient.httpGet("https://$apiSuffix/chapters/${chapter.url}").parseJson()
             val pages = json.getJSONArray("pages").asTypedList<JSONObject>()
 
             return pages.mapIndexed { index, page ->
-                val pageUrl = page.getString("url")
-                MangaPage(
-                    id = generateUid(index.toLong()),
-                    url = pageUrl,
-                    preview = null,
-                    source = source,
-                )
+            	val pageUrl = page.getString("url")
+            	MangaPage(
+                  	id = generateUid(index.toLong()),
+                    	url = pageUrl,
+                    	preview = null,
+                    	source = source,
+                	)
             }
-        }
+      }
 
 	private suspend fun fetchTags(): Set<MangaTag> {
 		val json = webClient.httpGet("https://$apiSuffix/resources/systems_vi.json").parseJson()
