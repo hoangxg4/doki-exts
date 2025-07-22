@@ -1,9 +1,7 @@
 package org.dokiteam.doki.parsers.site.vi
 
-import org.json.JSONArray
 import org.json.JSONObject
 import org.jsoup.nodes.Document
-import org.jsoup.Jsoup
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
@@ -13,17 +11,15 @@ import org.dokiteam.doki.parsers.util.*
 import org.dokiteam.doki.parsers.util.json.*
 import java.text.SimpleDateFormat
 import java.util.*
-import org.dokiteam.doki.parsers.Broken
 
-@Broken
 @MangaSourceParser("TRUYENHENTAI18", "TruyenHentai18", "vi", ContentType.HENTAI)
 internal class TruyenHentai18(context: MangaLoaderContext):
-      PagedMangaParser(context, MangaParserSource.TRUYENHENTAI18, 18) {
+	PagedMangaParser(context, MangaParserSource.TRUYENHENTAI18, 18) {
 
 	override val configKeyDomain = ConfigKey.Domain("truyenhentai18.app")
 
-      private val apiSuffix = "api.th18.app"
-      private val cdnSuffix = "vi-api.th18.app"
+	private val apiSuffix = "api.th18.app"
+	private val cdnSuffix = "vi-api.th18.app"
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
@@ -32,8 +28,8 @@ internal class TruyenHentai18(context: MangaLoaderContext):
 
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
 		SortOrder.UPDATED,
-        	SortOrder.NEWEST,
-        	SortOrder.NEWEST_ASC,
+		SortOrder.NEWEST,
+		SortOrder.NEWEST_ASC,
 	)
 
 	override val filterCapabilities: MangaListFilterCapabilities
@@ -61,7 +57,7 @@ internal class TruyenHentai18(context: MangaLoaderContext):
 				buildString {
 					append(apiSuffix + "/posts")
 					append("?language=vi")
-					
+
 					append("&order=")
 					append(
 						when (order) {
@@ -83,11 +79,10 @@ internal class TruyenHentai18(context: MangaLoaderContext):
 			}
 		}
 
-		val fullUrl = "https://" + url
 		return when {
-			filter.tags.isNotEmpty() -> parseNextList(webClient.httpGet(fullUrl).parseHtml())
+			filter.tags.isNotEmpty() -> parseNextList(webClient.httpGet("https://$url").parseHtml())
 			else -> {
-				val doc = webClient.httpGet(fullUrl).parseJson()
+				val doc = webClient.httpGet("https://$url").parseJson()
 				parseJSONList(doc)
 			}
 		}
@@ -129,7 +124,7 @@ internal class TruyenHentai18(context: MangaLoaderContext):
 	private fun parseNextList(doc: Document): List<Manga> { // need to clean code, very slow response
 		val script = doc.select("script").firstOrNull { it.data().contains("response") }
 			?: throw Exception("Không tìm thấy script chứa dữ liệu manga")
-		
+
 		val scriptContent = script.data()
 		val cleanedScript = scriptContent
 			.replace("self.__next_f.push([1,", "")
@@ -142,14 +137,14 @@ internal class TruyenHentai18(context: MangaLoaderContext):
 			.replace("\\n", "")
 			.replace("\\t", "")
 			.replace("\\r", "")
-			
+
 		val responseStart = cleanedScript.indexOf("{\"response\":")
 		if (responseStart == -1) throw Exception("Không tìm thấy object 'response' trong script")
-		
+
 		var bracketCount = 0
 		var i = responseStart
 		var jsonStr = ""
-		
+
 		while (i < cleanedScript.length) {
 			val c = cleanedScript[i]
 			when (c) {
@@ -208,7 +203,7 @@ internal class TruyenHentai18(context: MangaLoaderContext):
 	}
 
 	override suspend fun getDetails(manga: Manga): Manga {
-        val fullUrl = "https://$domain/vi/" + manga.url + ".html"
+		val fullUrl = "https://$domain/vi/" + manga.url + ".html"
 		val doc = webClient.httpGet(fullUrl).parseHtml()
 		return manga.copy(
 			chapters = doc.select("div.grid.grid-cols-1.md\\:grid-cols-2.gap-4 a.block")
@@ -228,44 +223,34 @@ internal class TruyenHentai18(context: MangaLoaderContext):
 						source = source,
 					)
 				}
-			)
+		)
 	}
 
-    	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-	        val doc = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseHtml()
-	        val scriptContent = doc.select("script")
-	            .firstOrNull { it.data().startsWith("self.__next_f.push([1,\"\\u003cp\\u003e\\u003c") }
-	            ?.data()
-	
-	        if (scriptContent != null) {
-	            val regex = Regex("""self\.__next_f\.push\(\[1,\"(.*)\"\]\)""")
-	            val htmlEncoded = regex.find(scriptContent)?.groupValues?.getOrNull(1)
-	            if (!htmlEncoded.isNullOrEmpty()) {
-	                val html = try {
-	                    JSONArray("[\"$htmlEncoded\"]").getString(0)
-	                } catch (e: Exception) {
-	                    htmlEncoded
-	                        .replace("\\u003c", "<")
-	                        .replace("\\u003e", ">")
-	                        .replace("\\\"", "\"")
-	                        .replace("\\/", "/")
-	                }
-	
-	                val imageUrls = Jsoup.parse(html).select("img").mapNotNull { it.attr("src") }
-	                if (imageUrls.isNotEmpty()) {
-	                    return imageUrls.map { url ->
-	                        MangaPage(
-	                            id = generateUid(url),
-	                            url = url,
-	                            preview = null,
-	                            source = source,
-	                        )
-	                    }
-	                } else return emptyList()
-	            }
-	        }
-	        return emptyList()
-	    }
+	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
+		val doc = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseHtml()
+		val scriptContent = doc.select("script")
+			.firstOrNull { it.data().contains("img src") }
+			?.data()
+			?: return emptyList()
+
+		val decoded = scriptContent
+			.replace("\\u003c", "<")
+			.replace("\\u003e", ">")
+			.replace("\\\"", "\"")
+			.replace("\\/", "/")
+
+		val regex = Regex("""img\s+src=["'](https?://[^"']+)["']""")
+		val imageUrls = regex.findAll(decoded).map { it.groupValues[1] }.toList()
+
+		return imageUrls.map { url ->
+			MangaPage(
+				id = generateUid(url),
+				url = url,
+				preview = null,
+				source = source,
+			)
+		}
+	}
 
 	private fun parseChapterDate(date: String?): Long {
 		if (date == null) return 0
