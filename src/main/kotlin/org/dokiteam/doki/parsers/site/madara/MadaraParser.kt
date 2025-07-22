@@ -9,7 +9,7 @@ import org.jsoup.nodes.Element
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaParserAuthProvider
 import org.dokiteam.doki.parsers.config.ConfigKey
-import org.dokiteam.doki.parsers.core.LegacyPagedMangaParser
+import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.exception.AuthRequiredException
 import org.dokiteam.doki.parsers.exception.ParseException
 import org.dokiteam.doki.parsers.model.*
@@ -23,7 +23,7 @@ internal abstract class MadaraParser(
 	source: MangaParserSource,
 	domain: String,
 	pageSize: Int = 12,
-) : LegacyPagedMangaParser(context, source, pageSize), MangaParserAuthProvider {
+) : PagedMangaParser(context, source, pageSize), MangaParserAuthProvider {
 
 	override val configKeyDomain = ConfigKey.Domain(domain)
 

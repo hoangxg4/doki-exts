@@ -11,7 +11,7 @@ import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.config.ConfigKey
-import org.dokiteam.doki.parsers.core.LegacyPagedMangaParser
+import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.exception.NotFoundException
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
@@ -24,7 +24,7 @@ internal abstract class WpComicsParser(
 	source: MangaParserSource,
 	domain: String,
 	pageSize: Int = 48,
-) : LegacyPagedMangaParser(context, source, pageSize) {
+) : PagedMangaParser(context, source, pageSize) {
 
 	companion object {
 		const val netDomain = "nettruyen1975.com"

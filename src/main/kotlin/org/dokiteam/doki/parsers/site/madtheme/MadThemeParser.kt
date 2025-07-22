@@ -5,7 +5,7 @@ import kotlinx.coroutines.coroutineScope
 import org.jsoup.nodes.Document
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.config.ConfigKey
-import org.dokiteam.doki.parsers.core.LegacyPagedMangaParser
+import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import java.text.DateFormat
@@ -17,7 +17,7 @@ internal abstract class MadthemeParser(
 	source: MangaParserSource,
 	domain: String,
 	pageSize: Int = 48,
-) : LegacyPagedMangaParser(context, source, pageSize) {
+) : PagedMangaParser(context, source, pageSize) {
 
 	override val configKeyDomain = ConfigKey.Domain(domain)
 

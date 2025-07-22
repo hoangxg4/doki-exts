@@ -6,7 +6,7 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.config.ConfigKey
-import org.dokiteam.doki.parsers.core.LegacyPagedMangaParser
+import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import org.dokiteam.doki.parsers.util.json.getBooleanOrDefault
@@ -17,7 +17,7 @@ internal abstract class LilianaParser(
 	source: MangaParserSource,
 	domain: String,
 	pageSize: Int = 24,
-) : LegacyPagedMangaParser(context, source, pageSize) {
+) : PagedMangaParser(context, source, pageSize) {
 
 	override val configKeyDomain = ConfigKey.Domain(domain)
 

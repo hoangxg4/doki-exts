@@ -6,7 +6,7 @@ import org.json.JSONArray
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
-import org.dokiteam.doki.parsers.core.LegacyPagedMangaParser
+import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.exception.ParseException
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
@@ -16,7 +16,7 @@ import java.util.*
 
 @MangaSourceParser("NHENTAIWORLD", "Nhentai World", "vi", ContentType.HENTAI)
 internal class NhentaiWorld(context: MangaLoaderContext) :
-	LegacyPagedMangaParser(context, MangaParserSource.NHENTAIWORLD, 24) {
+	PagedMangaParser(context, MangaParserSource.NHENTAIWORLD, 24) {
 
 	override val configKeyDomain = ConfigKey.Domain("nhentaiworld-h1.art")
 

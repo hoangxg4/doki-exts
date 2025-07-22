@@ -6,7 +6,7 @@ import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaParser
-import org.dokiteam.doki.parsers.core.LegacyMangaParser
+import org.dokiteam.doki.parsers.core.AbstractMangaParser
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.suspendlazy.suspendLazy
 
@@ -111,7 +111,7 @@ public class LinkResolver internal constructor(
 		if (SortOrder.RELEVANCE in supported) {
 			return SortOrder.RELEVANCE
 		}
-		if (this is LegacyMangaParser) {
+		if (this is AbstractMangaParser) {
 			return defaultSortOrder
 		}
 		return SortOrder.entries.first { it in supported }

@@ -7,7 +7,7 @@ import okhttp3.Headers
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.config.ConfigKey
 import org.dokiteam.doki.parsers.network.UserAgents
-import org.dokiteam.doki.parsers.core.LegacyPagedMangaParser
+import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.util.suspendlazy.suspendLazy
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
@@ -20,7 +20,7 @@ internal abstract class YuriGardenParser(
 	source: MangaParserSource,
 	domain: String,
 	protected val isR18Enable: Boolean = false
-) : LegacyPagedMangaParser(context, source, 18) {
+) : PagedMangaParser(context, source, 18) {
 
 	private val availableTags = suspendLazy(initializer = ::fetchTags)
 

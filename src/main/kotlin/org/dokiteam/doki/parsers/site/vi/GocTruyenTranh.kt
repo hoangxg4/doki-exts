@@ -4,7 +4,7 @@ import androidx.collection.arraySetOf
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
-import org.dokiteam.doki.parsers.core.LegacyPagedMangaParser
+import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.network.UserAgents
 import org.dokiteam.doki.parsers.util.*
@@ -13,7 +13,7 @@ import java.util.*
 
 @MangaSourceParser("GOCTRUYENTRANH", "Góc Truyện Tranh", "vi")
 internal class GocTruyenTranh(context: MangaLoaderContext) :
-	LegacyPagedMangaParser(context, MangaParserSource.GOCTRUYENTRANH, 30) {
+	PagedMangaParser(context, MangaParserSource.GOCTRUYENTRANH, 30) {
 
 	override val configKeyDomain = ConfigKey.Domain("goctruyentranh.net")
 

@@ -3,7 +3,7 @@ package org.dokiteam.doki.parsers.site.vi
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
-import org.dokiteam.doki.parsers.core.LegacyPagedMangaParser
+import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import java.text.SimpleDateFormat
@@ -11,7 +11,7 @@ import java.util.*
 
 @MangaSourceParser("TRUYENTRANH3Q", "TruyenTranh3Q", "vi")
 internal class TruyenTranh3Q(context: MangaLoaderContext) :
-	LegacyPagedMangaParser(context, MangaParserSource.TRUYENTRANH3Q, 42) {
+	PagedMangaParser(context, MangaParserSource.TRUYENTRANH3Q, 42) {
 
 	private val relativeTimePattern = Regex("(\\d+)\\s*(phút|giờ|ngày|tuần) trước")
 	private val absoluteTimePattern = Regex("(\\d{2}-\\d{2}-\\d{4})")

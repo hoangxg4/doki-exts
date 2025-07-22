@@ -11,26 +11,27 @@ import org.dokiteam.doki.parsers.MangaParser
 import org.dokiteam.doki.parsers.config.ConfigKey
 import org.dokiteam.doki.parsers.config.MangaSourceConfig
 import org.dokiteam.doki.parsers.model.*
+import org.dokiteam.doki.parsers.model.search.MangaSearchQuery
+import org.dokiteam.doki.parsers.model.search.MangaSearchQueryCapabilities
 import org.dokiteam.doki.parsers.network.OkHttpWebClient
 import org.dokiteam.doki.parsers.network.WebClient
-import org.dokiteam.doki.parsers.util.FaviconParser
-import org.dokiteam.doki.parsers.util.LinkResolver
-import org.dokiteam.doki.parsers.util.RelatedMangaFinder
-import org.dokiteam.doki.parsers.util.toAbsoluteUrl
+import org.dokiteam.doki.parsers.util.*
 import java.util.*
 
+@Suppress("OVERRIDE_DEPRECATION")
 @InternalParsersApi
 public abstract class AbstractMangaParser @InternalParsersApi constructor(
 	@property:InternalParsersApi public val context: MangaLoaderContext,
 	public final override val source: MangaParserSource,
 ) : MangaParser {
 
+	public final override val searchQueryCapabilities: MangaSearchQueryCapabilities
+		get() = filterCapabilities.toMangaSearchQueryCapabilities()
+
 	public override val config: MangaSourceConfig by lazy { context.getConfig(source) }
 
 	public open val sourceLocale: Locale
 		get() = if (source.locale.isEmpty()) Locale.ROOT else Locale(source.locale)
-
-	protected open val userAgentKey: ConfigKey.UserAgent = ConfigKey.UserAgent(context.getDefaultUserAgent())
 
 	protected val sourceContentRating: ContentRating?
 		get() = if (source.contentType == ContentType.HENTAI) {
@@ -39,10 +40,10 @@ public abstract class AbstractMangaParser @InternalParsersApi constructor(
 			null
 		}
 
-	final override val domain: String
-		get() = config[configKeyDomain]
+	protected val isNsfwSource: Boolean = source.contentType == ContentType.HENTAI
 
-	@Deprecated("Override intercept() instead")
+	protected open val userAgentKey: ConfigKey.UserAgent = ConfigKey.UserAgent(context.getDefaultUserAgent())
+
 	override fun getRequestHeaders(): Headers = Headers.Builder()
 		.add("User-Agent", config[userAgentKey])
 		.build()
@@ -56,12 +57,22 @@ public abstract class AbstractMangaParser @InternalParsersApi constructor(
 			return SortOrder.entries.first { it in supported }
 		}
 
+	final override val domain: String
+		get() = config[configKeyDomain]
+
 	@JvmField
 	protected val webClient: WebClient = OkHttpWebClient(context.httpClient, source)
 
-	@Deprecated("Please check searchQueryCapabilities")
-	final override val filterCapabilities: MangaListFilterCapabilities
-		get() = super.filterCapabilities
+	/**
+	 * Search list of manga by specified searchQuery
+	 *
+	 * @param query searchQuery
+	 */
+	public final override suspend fun getList(query: MangaSearchQuery): List<Manga> = getList(
+		offset = query.offset,
+		order = query.order ?: defaultSortOrder,
+		filter = convertToMangaListFilter(query),
+	)
 
 	/**
 	 * Fetch direct link to the page image.

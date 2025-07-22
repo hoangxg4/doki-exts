@@ -3,14 +3,14 @@ package org.dokiteam.doki.parsers.site.vi
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
-import org.dokiteam.doki.parsers.core.LegacyPagedMangaParser
+import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import java.util.*
 
 @MangaSourceParser("HENTAIVNBUZZ", "HentaiVn.buzz", "vi", type = ContentType.HENTAI)
 internal class HentaiVnBuzz(context: MangaLoaderContext) :
-	LegacyPagedMangaParser(context, MangaParserSource.HENTAIVNBUZZ, 60) {
+	PagedMangaParser(context, MangaParserSource.HENTAIVNBUZZ, 60) {
 
 	override val configKeyDomain = ConfigKey.Domain("hentaivn.beer")
 

@@ -3,14 +3,14 @@ package org.dokiteam.doki.parsers.site.vi
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
-import org.dokiteam.doki.parsers.core.LegacyPagedMangaParser
+import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import java.text.SimpleDateFormat
 import java.util.*
 
 @MangaSourceParser("TRUYENQQ", "TruyenQQ", "vi")
-internal class TruyenQQ(context: MangaLoaderContext) : LegacyPagedMangaParser(context, MangaParserSource.TRUYENQQ, 42) {
+internal class TruyenQQ(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.TRUYENQQ, 42) {
 
 	override val configKeyDomain = ConfigKey.Domain("truyenqqgo.com")
 

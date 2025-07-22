@@ -5,7 +5,7 @@ import org.jsoup.nodes.Document
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
-import org.dokiteam.doki.parsers.core.LegacyPagedMangaParser
+import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.exception.ParseException
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
@@ -16,7 +16,7 @@ import java.util.*
 
 @MangaSourceParser("DAMCONUONG", "Dâm Cô Nương", "vi", type = ContentType.HENTAI)
 internal class DamCoNuong(context: MangaLoaderContext) :
-	LegacyPagedMangaParser(context, MangaParserSource.DAMCONUONG, 30) {
+	PagedMangaParser(context, MangaParserSource.DAMCONUONG, 30) {
 
 	override val configKeyDomain = ConfigKey.Domain("damconuong.cam")
 

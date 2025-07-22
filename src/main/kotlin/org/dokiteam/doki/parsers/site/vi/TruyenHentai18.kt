@@ -7,7 +7,7 @@ import org.jsoup.Jsoup
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
-import org.dokiteam.doki.parsers.core.LegacyPagedMangaParser
+import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import org.dokiteam.doki.parsers.util.json.*
@@ -18,7 +18,7 @@ import org.dokiteam.doki.parsers.Broken
 @Broken
 @MangaSourceParser("TRUYENHENTAI18", "TruyenHentai18", "vi", ContentType.HENTAI)
 internal class TruyenHentai18(context: MangaLoaderContext):
-      LegacyPagedMangaParser(context, MangaParserSource.TRUYENHENTAI18, 18) {
+      PagedMangaParser(context, MangaParserSource.TRUYENHENTAI18, 18) {
 
 	override val configKeyDomain = ConfigKey.Domain("truyenhentai18.app")
 

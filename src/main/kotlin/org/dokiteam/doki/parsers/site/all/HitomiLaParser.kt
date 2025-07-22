@@ -13,7 +13,7 @@ import org.jsoup.Jsoup
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
-import org.dokiteam.doki.parsers.core.LegacyMangaParser
+import org.dokiteam.doki.parsers.core.AbstractMangaParser
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import org.dokiteam.doki.parsers.util.json.getStringOrNull
@@ -30,7 +30,7 @@ import kotlin.math.min
 
 @OptIn(ExperimentalUnsignedTypes::class)
 @MangaSourceParser("HITOMILA", "Hitomi.La", type = ContentType.HENTAI)
-internal class HitomiLaParser(context: MangaLoaderContext) : LegacyMangaParser(context, MangaParserSource.HITOMILA) {
+internal class HitomiLaParser(context: MangaLoaderContext) : AbstractMangaParser(context, MangaParserSource.HITOMILA) {
 	override val configKeyDomain = ConfigKey.Domain("hitomi.la")
 
 	private val cdnDomain = "gold-usergeneratedcontent.net"

@@ -7,7 +7,7 @@ import org.jsoup.nodes.Element
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
-import org.dokiteam.doki.parsers.core.LegacyPagedMangaParser
+import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import org.dokiteam.doki.parsers.util.json.mapJSONNotNull
@@ -20,7 +20,7 @@ import javax.crypto.spec.SecretKeySpec
 
 @MangaSourceParser("VCOMYCS", "Vcomycs", "vi", ContentType.MANGA)
 internal class VcomycsParser(context: MangaLoaderContext) :
-	LegacyPagedMangaParser(context, MangaParserSource.VCOMYCS, 36) {
+	PagedMangaParser(context, MangaParserSource.VCOMYCS, 36) {
 
 	override val configKeyDomain: ConfigKey.Domain
 		get() = ConfigKey.Domain("vivicomi5.info")

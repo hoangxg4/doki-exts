@@ -8,7 +8,7 @@ import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaParserAuthProvider
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
-import org.dokiteam.doki.parsers.core.LegacyPagedMangaParser
+import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.exception.ParseException
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
@@ -20,7 +20,7 @@ import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 @MangaSourceParser("BATOTO", "Bato.To")
-internal class BatoToParser(context: MangaLoaderContext) : LegacyPagedMangaParser(
+internal class BatoToParser(context: MangaLoaderContext) : PagedMangaParser(
 	context = context,
 	source = MangaParserSource.BATOTO,
 	pageSize = 60,

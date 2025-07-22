@@ -10,7 +10,7 @@ import org.json.JSONObject
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
-import org.dokiteam.doki.parsers.core.AbstractMangaParser
+import org.dokiteam.doki.parsers.core.FlexibleMangaParser
 import org.dokiteam.doki.parsers.exception.ParseException
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.model.search.MangaSearchQuery
@@ -34,7 +34,7 @@ private const val SERVER_DATA = "data"
 private const val SERVER_DATA_SAVER = "data-saver"
 
 @MangaSourceParser("MANGADEX", "MangaDex")
-internal class MangaDexParser(context: MangaLoaderContext) : AbstractMangaParser(context, MangaParserSource.MANGADEX) {
+internal class MangaDexParser(context: MangaLoaderContext) : FlexibleMangaParser(context, MangaParserSource.MANGADEX) {
 
 	override val configKeyDomain = ConfigKey.Domain("mangadex.org")
 

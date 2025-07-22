@@ -3,13 +3,13 @@ package org.dokiteam.doki.parsers.site.vi
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
-import org.dokiteam.doki.parsers.core.LegacyPagedMangaParser
+import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import java.util.*
 
 @MangaSourceParser("KURONEKO", "Việt Hentai - Kuro Neko", "vi", type = ContentType.HENTAI)
-internal class KuroNeko(context: MangaLoaderContext) : LegacyPagedMangaParser(context, MangaParserSource.KURONEKO, 60) {
+internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.KURONEKO, 60) {
 
 	override val configKeyDomain = ConfigKey.Domain("vi-hentai.moe")
 

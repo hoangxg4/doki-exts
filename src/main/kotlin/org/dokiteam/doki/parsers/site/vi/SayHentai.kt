@@ -3,7 +3,7 @@ package org.dokiteam.doki.parsers.site.vi
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
-import org.dokiteam.doki.parsers.core.LegacyPagedMangaParser
+import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import java.text.SimpleDateFormat
@@ -11,7 +11,7 @@ import java.util.*
 
 @MangaSourceParser("SAYHENTAI", "SayHentai", "vi", ContentType.HENTAI)
 internal class SayHentai(context: MangaLoaderContext) :
-	LegacyPagedMangaParser(context, MangaParserSource.SAYHENTAI, 20) {
+	PagedMangaParser(context, MangaParserSource.SAYHENTAI, 20) {
 	override val configKeyDomain = ConfigKey.Domain("sayhentaii.art")
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {

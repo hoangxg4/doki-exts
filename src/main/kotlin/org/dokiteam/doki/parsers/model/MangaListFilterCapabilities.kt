@@ -2,7 +2,6 @@ package org.dokiteam.doki.parsers.model
 
 import org.dokiteam.doki.parsers.InternalParsersApi
 
-@Deprecated("Please check new MangaSearchQueryCapabilities class")
 public data class MangaListFilterCapabilities @InternalParsersApi constructor(
 
 	/**

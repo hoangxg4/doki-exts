@@ -4,6 +4,7 @@ import androidx.collection.ArraySet
 import org.dokiteam.doki.parsers.model.search.QueryCriteria.*
 import org.dokiteam.doki.parsers.util.mapToSet
 
+@Deprecated("Too complex. Use MangaListFilterCapabilities instead")
 @ExposedCopyVisibility
 public data class MangaSearchQueryCapabilities internal constructor(
 	public val capabilities: Set<SearchCapability>,

@@ -4,7 +4,7 @@ import androidx.collection.ArrayMap
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
-import org.dokiteam.doki.parsers.core.LegacyPagedMangaParser
+import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import org.dokiteam.doki.parsers.util.suspendlazy.suspendLazy
@@ -13,7 +13,7 @@ import java.util.*
 
 @MangaSourceParser("TRUYENHENTAIVN", "TruyenHentaiVN", "vi", type = ContentType.HENTAI)
 internal class TruyenHentaiVN(context: MangaLoaderContext) :
-	LegacyPagedMangaParser(context, MangaParserSource.TRUYENHENTAIVN, 30) {
+	PagedMangaParser(context, MangaParserSource.TRUYENHENTAIVN, 30) {
 
 	private var cacheTags = suspendLazy(initializer = ::fetchTags)
 	override val configKeyDomain = ConfigKey.Domain("truyenhentaivn.club")

@@ -3,14 +3,14 @@ package org.dokiteam.doki.parsers.site.vi
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
-import org.dokiteam.doki.parsers.core.LegacyPagedMangaParser
+import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import java.text.SimpleDateFormat
 import java.util.*
 
 @MangaSourceParser("LXMANGA", "LXManga", "vi", type = ContentType.HENTAI)
-internal class LxManga(context: MangaLoaderContext) : LegacyPagedMangaParser(context, MangaParserSource.LXMANGA, 60) {
+internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.LXMANGA, 60) {
 
 	override val configKeyDomain = ConfigKey.Domain("lxmanga.blog")
 

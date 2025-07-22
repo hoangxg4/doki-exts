@@ -3,8 +3,9 @@ package org.dokiteam.doki.parsers.core
 import org.dokiteam.doki.parsers.InternalParsersApi
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.model.Manga
+import org.dokiteam.doki.parsers.model.MangaListFilter
 import org.dokiteam.doki.parsers.model.MangaParserSource
-import org.dokiteam.doki.parsers.model.search.MangaSearchQuery
+import org.dokiteam.doki.parsers.model.SortOrder
 
 @InternalParsersApi
 public abstract class SinglePageMangaParser(
@@ -12,12 +13,12 @@ public abstract class SinglePageMangaParser(
 	source: MangaParserSource,
 ) : AbstractMangaParser(context, source) {
 
-	final override suspend fun getList(query: MangaSearchQuery): List<Manga> {
-		if (query.offset > 0) {
+	final override suspend fun getList(offset: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
+		if (offset > 0) {
 			return emptyList()
 		}
-		return getSinglePageList(query)
+		return getList(order, filter)
 	}
 
-	public abstract suspend fun getSinglePageList(searchQuery: MangaSearchQuery): List<Manga>
+	public abstract suspend fun getList(order: SortOrder, filter: MangaListFilter): List<Manga>
 }

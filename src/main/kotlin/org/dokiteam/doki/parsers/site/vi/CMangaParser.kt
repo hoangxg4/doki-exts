@@ -7,7 +7,7 @@ import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaParserAuthProvider
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
-import org.dokiteam.doki.parsers.core.LegacyPagedMangaParser
+import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.exception.AuthRequiredException
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
@@ -20,7 +20,7 @@ private const val PAGE_SIZE = 20
 
 @MangaSourceParser("CMANGA", "CManga", "vi")
 internal class CMangaParser(context: MangaLoaderContext) :
-	LegacyPagedMangaParser(context, MangaParserSource.CMANGA, PAGE_SIZE), MangaParserAuthProvider {
+	PagedMangaParser(context, MangaParserSource.CMANGA, PAGE_SIZE), MangaParserAuthProvider {
 
 	override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain("cmangax2.com")
 

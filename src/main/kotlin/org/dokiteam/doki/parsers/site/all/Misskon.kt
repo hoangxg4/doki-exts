@@ -3,13 +3,13 @@ package org.dokiteam.doki.parsers.site.all
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
-import org.dokiteam.doki.parsers.core.LegacyPagedMangaParser
+import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import java.util.*
 
 @MangaSourceParser("MISSKON", "MissKon", type = ContentType.OTHER)
-internal class Misskon(context: MangaLoaderContext) : LegacyPagedMangaParser(context, MangaParserSource.MISSKON, 24) {
+internal class Misskon(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.MISSKON, 24) {
 
     override val configKeyDomain = ConfigKey.Domain("misskon.com")
 

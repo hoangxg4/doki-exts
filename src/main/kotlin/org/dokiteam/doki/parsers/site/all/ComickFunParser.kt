@@ -8,7 +8,7 @@ import org.json.JSONObject
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
-import org.dokiteam.doki.parsers.core.LegacyPagedMangaParser
+import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import org.dokiteam.doki.parsers.util.json.*
@@ -20,7 +20,7 @@ private const val CHAPTERS_LIMIT = 99999
 
 @MangaSourceParser("COMICK_FUN", "ComicK")
 internal class ComickFunParser(context: MangaLoaderContext) :
-	LegacyPagedMangaParser(context, MangaParserSource.COMICK_FUN, 20) {
+	PagedMangaParser(context, MangaParserSource.COMICK_FUN, 20) {
 
 	override val configKeyDomain = ConfigKey.Domain("comick.io")
 

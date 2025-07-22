@@ -6,7 +6,7 @@ import org.jsoup.nodes.Document
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
-import org.dokiteam.doki.parsers.core.LegacyPagedMangaParser
+import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import java.text.SimpleDateFormat
@@ -14,7 +14,7 @@ import java.util.*
 
 @MangaSourceParser("HENTAI18VN", "Hentai18VN", "vi", type = ContentType.HENTAI)
 internal class Hentai18VN(context: MangaLoaderContext) :
-	LegacyPagedMangaParser(context, MangaParserSource.HENTAI18VN, 30) {
+	PagedMangaParser(context, MangaParserSource.HENTAI18VN, 30) {
 
 	override val configKeyDomain = ConfigKey.Domain("hentai18vn.top")
 

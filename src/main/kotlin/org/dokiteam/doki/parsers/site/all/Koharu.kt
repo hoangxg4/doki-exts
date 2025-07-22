@@ -6,7 +6,7 @@ import org.jsoup.HttpStatusException
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
-import org.dokiteam.doki.parsers.core.LegacyPagedMangaParser
+import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.exception.ParseException
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
@@ -24,7 +24,7 @@ import org.dokiteam.doki.parsers.Broken
 @Broken("Need to fix getPages, most manga don't have chapter images due to faulty fetch logic")
 @MangaSourceParser("KOHARU", "Schale.network", type = ContentType.HENTAI)
 internal class Koharu(context: MangaLoaderContext) :
-	LegacyPagedMangaParser(context, MangaParserSource.KOHARU, 24) {
+	PagedMangaParser(context, MangaParserSource.KOHARU, 24) {
 
 	override val configKeyDomain = ConfigKey.Domain("niyaniya.moe")
 	private val apiSuffix = "api.schale.network"

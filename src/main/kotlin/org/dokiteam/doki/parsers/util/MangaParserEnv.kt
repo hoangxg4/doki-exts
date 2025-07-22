@@ -5,7 +5,7 @@ import org.jsoup.nodes.Element
 import org.dokiteam.doki.parsers.ErrorMessages
 import org.dokiteam.doki.parsers.InternalParsersApi
 import org.dokiteam.doki.parsers.MangaParser
-import org.dokiteam.doki.parsers.core.LegacyMangaParser
+import org.dokiteam.doki.parsers.core.AbstractMangaParser
 import org.dokiteam.doki.parsers.exception.ParseException
 import org.dokiteam.doki.parsers.model.*
 
@@ -83,7 +83,7 @@ private fun <T> Set<T>?.oneOrThrowIfMany(msg: String): T? = when {
 }
 
 @InternalParsersApi
-public fun LegacyMangaParser.getDomain(subdomain: String): String {
+public fun AbstractMangaParser.getDomain(subdomain: String): String {
 	val domain = domain
 	return subdomain + "." + domain.removePrefix("www.")
 }

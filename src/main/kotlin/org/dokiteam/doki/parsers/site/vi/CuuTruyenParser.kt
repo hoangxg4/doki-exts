@@ -13,7 +13,7 @@ import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.bitmap.Bitmap
 import org.dokiteam.doki.parsers.bitmap.Rect
 import org.dokiteam.doki.parsers.config.ConfigKey
-import org.dokiteam.doki.parsers.core.LegacyPagedMangaParser
+import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.network.UserAgents
 import org.dokiteam.doki.parsers.util.*
@@ -24,7 +24,7 @@ import java.util.*
 
 @MangaSourceParser("CUUTRUYEN", "Cứu Truyện", "vi")
 internal class CuuTruyenParser(context: MangaLoaderContext) :
-	LegacyPagedMangaParser(context, MangaParserSource.CUUTRUYEN, 20) {
+	PagedMangaParser(context, MangaParserSource.CUUTRUYEN, 20) {
 
 	override val userAgentKey = ConfigKey.UserAgent(UserAgents.KOTATSU)
 

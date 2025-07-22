@@ -4,7 +4,7 @@ import org.json.JSONObject
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
-import org.dokiteam.doki.parsers.core.LegacyPagedMangaParser
+import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import org.dokiteam.doki.parsers.util.json.*
@@ -12,7 +12,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 @MangaSourceParser("HANGTRUYEN", "Hang Truyện", "vi")
-internal class HangTruyen(context: MangaLoaderContext) : LegacyPagedMangaParser(context, MangaParserSource.HANGTRUYEN, 10) {
+internal class HangTruyen(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.HANGTRUYEN, 10) {
 
 	override val configKeyDomain = ConfigKey.Domain("hangtruyen.org")
 

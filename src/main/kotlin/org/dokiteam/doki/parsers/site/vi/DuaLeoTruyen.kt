@@ -4,7 +4,7 @@ import okhttp3.internal.closeQuietly
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
-import org.dokiteam.doki.parsers.core.LegacyPagedMangaParser
+import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.network.UserAgents
 import org.dokiteam.doki.parsers.util.*
@@ -13,7 +13,7 @@ import java.util.*
 
 @MangaSourceParser("DUALEOTRUYEN", "Dưa Leo Truyện", "vi", type = ContentType.HENTAI)
 internal class DuaLeoTruyen(context: MangaLoaderContext) :
-	LegacyPagedMangaParser(context, MangaParserSource.DUALEOTRUYEN, 60) {
+	PagedMangaParser(context, MangaParserSource.DUALEOTRUYEN, 60) {
 
 	override val configKeyDomain: ConfigKey.Domain
 		get() = ConfigKey.Domain("dualeotruyenp.com")
