@@ -18,6 +18,18 @@ internal class MimiHentai(context: MangaLoaderContext) :
 	private val apiSuffix = "api/v1/manga"
 	override val configKeyDomain = ConfigKey.Domain("mimihentai.com", "hentaihvn.com")
 
+	override suspend fun getFavicons(): Favicons {
+		return Favicons(
+			listOf(
+				Favicon(
+					"https://raw.githubusercontent.com/dragonx943/plugin-sdk/refs/heads/sources/mimihentai/app/src/main/ic_launcher-playstore.png",
+					512,
+					null),
+			),
+			domain,
+		)
+	}
+
 	private val preferredServerKey = ConfigKey.PreferredImageServer(
 		presetValues = mapOf(
 			"original" to "Server ảnh gốc (Original)",
@@ -96,9 +108,9 @@ internal class MimiHentai(context: MangaLoaderContext) :
                     when (order) {
                         SortOrder.UPDATED -> "updated_at"
                         SortOrder.ALPHABETICAL -> "title"
-                        SortOrder.POPULARITY, 
-                        SortOrder.POPULARITY_TODAY, 
-                        SortOrder.POPULARITY_WEEK, 
+                        SortOrder.POPULARITY -> "follows"
+                        SortOrder.POPULARITY_TODAY,
+                        SortOrder.POPULARITY_WEEK,
                         SortOrder.POPULARITY_MONTH -> "views"
                         SortOrder.RATING -> "likes"
                         else -> ""
@@ -111,10 +123,10 @@ internal class MimiHentai(context: MangaLoaderContext) :
                     when (order) {
                         SortOrder.UPDATED -> "/tatcatruyen?page=$page&sort=updated_at"
                         SortOrder.ALPHABETICAL -> "/tatcatruyen?page=$page&sort=title"
-                        SortOrder.POPULARITY -> "/tatcatruyen?page=$page&sort=views"
-                        SortOrder.POPULARITY_TODAY -> "/top-manga?page=$page&timeType=1&limit=18"
-                        SortOrder.POPULARITY_WEEK -> "/top-manga?page=$page&timeType=2&limit=18"
-                        SortOrder.POPULARITY_MONTH -> "/top-manga?page=$page&timeType=3&limit=18"
+                        SortOrder.POPULARITY -> "/tatcatruyen?page=$page&sort=follows"
+                        SortOrder.POPULARITY_TODAY -> "/tatcatruyen?page=$page&sort=views"
+                        SortOrder.POPULARITY_WEEK -> "/top-manga?page=$page&timeType=1&limit=18"
+                        SortOrder.POPULARITY_MONTH -> "/top-manga?page=$page&timeType=2&limit=18"
                         SortOrder.RATING -> "/tatcatruyen?page=$page&sort=likes"
                         else -> "/tatcatruyen?page=$page&sort=updated_at" // default
                     }
