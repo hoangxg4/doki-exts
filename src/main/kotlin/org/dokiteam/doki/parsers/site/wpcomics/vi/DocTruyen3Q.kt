@@ -3,7 +3,6 @@ package org.dokiteam.doki.parsers.site.wpcomics.vi
 import org.jsoup.nodes.Document
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
-import org.dokiteam.doki.parsers.config.ConfigKey
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.site.wpcomics.WpComicsParser
 import org.dokiteam.doki.parsers.util.*
@@ -206,7 +205,7 @@ internal class DocTruyen3Q(context: MangaLoaderContext) :
 
 			absoluteTimePattern.matches(dateText) -> {
 				val formatter = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
-				formatter.tryParse(dateText)
+				formatter.parseSafe(dateText)
 			}
 
 			else -> 0L

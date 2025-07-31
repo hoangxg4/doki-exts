@@ -118,7 +118,7 @@ internal class DuaLeoTruyen(context: MangaLoaderContext) :
 					number = i + 1f,
 					url = href,
 					scanlator = null,
-					uploadDate = dateFormat.tryParse(dateText),
+					uploadDate = dateFormat.parseSafe(dateText),
 					branch = null,
 					source = source,
 					volume = 0,
@@ -144,7 +144,7 @@ internal class DuaLeoTruyen(context: MangaLoaderContext) :
 			).closeQuietly()
 		}
 
-		return doc.select(".content_view_chap img").mapIndexed { i, img ->
+		return doc.select(".content_view_chap img").mapIndexed { _, img ->
 			val url = img.absUrl("data-original")
 			MangaPage(
 				id = generateUid(url),

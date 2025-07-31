@@ -8,12 +8,10 @@ import org.jsoup.nodes.Document
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
-import org.dokiteam.doki.parsers.network.UserAgents
 import org.dokiteam.doki.parsers.site.wpcomics.WpComicsParser
 import org.dokiteam.doki.parsers.exception.NotFoundException
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
-import java.lang.NullPointerException
 import java.net.URL
 import java.util.*
 

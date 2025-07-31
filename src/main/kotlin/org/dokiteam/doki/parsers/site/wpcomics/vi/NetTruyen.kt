@@ -4,7 +4,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
-import org.dokiteam.doki.parsers.config.ConfigKey
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.site.wpcomics.WpComicsParser
 import org.dokiteam.doki.parsers.util.*
@@ -61,7 +60,7 @@ internal class NetTruyen(context: MangaLoaderContext) :
 				volume = 0,
 				url = chapterUrl,
 				scanlator = null,
-				uploadDate = df.tryParse(jo.getString("updated_at")),
+				uploadDate = df.parseSafe(jo.getString("updated_at")),
 				branch = null,
 				source = source,
 			)
