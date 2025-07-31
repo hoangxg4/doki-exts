@@ -4,24 +4,13 @@ import org.jsoup.nodes.Element
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.exception.ParseException
-import org.dokiteam.doki.parsers.model.ContentType
-import org.dokiteam.doki.parsers.model.MangaChapter
-import org.dokiteam.doki.parsers.model.MangaPage
-import org.dokiteam.doki.parsers.model.MangaTag
-import org.dokiteam.doki.parsers.model.MangaListFilter
-import org.dokiteam.doki.parsers.model.MangaListFilterOptions
-import org.dokiteam.doki.parsers.model.MangaParserSource
-import org.dokiteam.doki.parsers.model.Manga
-import org.dokiteam.doki.parsers.model.MangaState
-import org.dokiteam.doki.parsers.model.ContentRating
-import org.dokiteam.doki.parsers.model.SortOrder
+import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.site.madara.MadaraParser
-import org.dokiteam.doki.parsers.config.ConfigKey
 import org.dokiteam.doki.parsers.util.*
 import org.dokiteam.doki.parsers.util.suspendlazy.getOrNull
 import org.dokiteam.doki.parsers.util.suspendlazy.suspendLazy
-import java.util.*
 
+// Do not use "hentaicb.sbs" domain, may cause duplicate tags!
 @MangaSourceParser("HENTAICUBE", "CBHentai", "vi", ContentType.HENTAI)
 internal class HentaiCube(context: MangaLoaderContext) :
 	MadaraParser(context, MangaParserSource.HENTAICUBE, "hentaicube.xyz") {
@@ -97,6 +86,7 @@ internal class HentaiCube(context: MangaLoaderContext) :
 					MangaState.ABANDONED -> append("canceled")
 					MangaState.PAUSED -> append("on-hold")
 					MangaState.UPCOMING -> append("upcoming")
+					else -> throw IllegalArgumentException("$it not supported")
 				}
 			}
 
