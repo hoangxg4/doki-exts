@@ -9,7 +9,9 @@ import org.dokiteam.doki.parsers.site.wpcomics.WpComicsParser
 import org.dokiteam.doki.parsers.util.*
 import org.dokiteam.doki.parsers.util.json.getStringOrNull
 import java.text.SimpleDateFormat
+import org.dokiteam.doki.parsers.Broken
 
+@Broken("Need to fix coverUrl")
 @MangaSourceParser("NETTRUYENX", "NetTruyenX", "vi")
 internal class NetTruyenX(context: MangaLoaderContext) :
 	WpComicsParser(context, MangaParserSource.NETTRUYENX, "nettruyenx.net", 36) {

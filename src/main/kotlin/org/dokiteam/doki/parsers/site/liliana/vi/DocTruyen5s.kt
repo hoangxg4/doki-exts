@@ -1,7 +1,6 @@
 package org.dokiteam.doki.parsers.site.liliana.vi
 
 import org.jsoup.Jsoup
-import org.dokiteam.doki.parsers.config.ConfigKey
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.model.MangaChapter
@@ -14,9 +13,7 @@ import org.dokiteam.doki.parsers.util.*
 
 @MangaSourceParser("DOCTRUYEN5S", "DocTruyen5s", "vi")
 internal class DocTruyen5s(context: MangaLoaderContext) :
-	LilianaParser(context, MangaParserSource.DOCTRUYEN5S, "dongmoe.com", 42) {
-
-	override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain("dongmoe.com", "manga.io.vn")
+	LilianaParser(context, MangaParserSource.DOCTRUYEN5S, "manga.io.vn", 42) {
 
 	override fun getRequestHeaders() = super.getRequestHeaders().newBuilder()
 		.add("referer", "no-referrer")
