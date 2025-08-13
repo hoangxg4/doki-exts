@@ -9,7 +9,6 @@ import org.dokiteam.doki.parsers.site.wpcomics.WpComicsParser
 import org.dokiteam.doki.parsers.util.*
 import org.dokiteam.doki.parsers.util.json.getStringOrNull
 import java.text.SimpleDateFormat
-import java.util.*
 
 @MangaSourceParser("NHATTRUYENVN", "NhatTruyenVN", "vi")
 internal class NhatTruyenVN(context: MangaLoaderContext) :
@@ -50,7 +49,7 @@ internal class NhatTruyenVN(context: MangaLoaderContext) :
 			val jo = data.getJSONObject(data.length() - 1 - i)
 			val chapterSlug = jo.getString("chapter_slug")
 			val chapterUrl = "/truyen-tranh/$slug/$chapterSlug"
-            val chapterNum = jo.getString("chapter_num").toFloat()
+            val chapterNum = jo.getString("chapter_num").toFloatOrNull() ?: 0f
 
 			MangaChapter(
 				id = generateUid(chapterUrl),

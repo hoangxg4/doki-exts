@@ -55,7 +55,7 @@ internal class TruyenHentai18(context: MangaLoaderContext):
 
 			else -> {
 				buildString {
-					append(apiSuffix + "/posts")
+					append("$apiSuffix/posts")
 					append("?language=vi")
 
 					append("&order=")
