@@ -83,7 +83,7 @@ private class MimiHentaiImageServer(port: Int) : NanoHTTPD(port) {
         val future = imageProcessingExecutor.submit<Response> {
             try {
                 imageCache.get(cacheKey)?.let { cachedBytes ->
-                    return@submit newFixedLengthResponse(
+                    return@submit newFixedLengthResponse( // SỬA Ở ĐÂY: Dùng labeled return
                         Response.Status.OK, MIME_WEBP,
                         ByteArrayInputStream(cachedBytes), cachedBytes.size.toLong()
                     )
@@ -91,7 +91,7 @@ private class MimiHentaiImageServer(port: Int) : NanoHTTPD(port) {
 
                 val imageRequest = Request.Builder().url(imageUrl).build()
                 val imageResponse = imageClient.newCall(imageRequest).execute()
-                val scrambledBytes = imageResponse.body()?.bytes() ?: throw IOException("Empty response body")
+                val scrambledBytes = imageResponse.body?.bytes() ?: throw IOException("Empty response body")
                 val originalBitmap = BitmapFactory.decodeByteArray(scrambledBytes, 0, scrambledBytes.size)
                     ?: throw IOException("Failed to decode bitmap")
 
@@ -243,7 +243,7 @@ internal class MimiHentai(context: MangaLoaderContext) :
 	private val apiSuffix = "api/v1/manga"
 	override val configKeyDomain = ConfigKey.Domain("mimihentai.com", "hentaihvn.com")
 	override val userAgentKey = ConfigKey.UserAgent(UserAgents.KOTATSU)
-    private val sourceLocale = Locale("vi_VN")
+    override val sourceLocale = Locale("vi_VN") // SỬA Ở ĐÂY: Thêm override
 
 	override suspend fun getFavicons(): Favicons {
 		return Favicons(
@@ -300,7 +300,7 @@ internal class MimiHentai(context: MangaLoaderContext) :
 			) {
 				append("/advance-search?page=")
 				append(page)
-				append("&max=18") // page size, avoid rate limit
+				append("&max=18")
 
 				if (!filter.query.isNullOrEmpty()) {
 					append("&name=")
@@ -499,7 +499,7 @@ internal class MimiHentai(context: MangaLoaderContext) :
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
 		val json = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseJson()
-		return json.getJSONArray("pages").mapJSONIndexed { index, jo ->
+		return json.getJSONArray("pages").mapJSON { jo ->
 			val imageUrl = jo.getString("imageUrl")
 			val drm = jo.getStringOrNull("drm")
 
@@ -508,7 +508,13 @@ internal class MimiHentai(context: MangaLoaderContext) :
 			} else {
 				"http://127.0.0.1:${ServerManager.PORT}?url=${imageUrl.urlEncoded()}&drm=$drm"
 			}
-			MangaPage(url = finalUrl, index = index)
+			// SỬA Ở ĐÂY: Sửa lại constructor của MangaPage
+			MangaPage(
+				id = generateUid(imageUrl),
+				url = finalUrl,
+				preview = null,
+				source = source
+			)
 		}
 	}
 
