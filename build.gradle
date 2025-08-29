@@ -1,7 +1,6 @@
 import tasks.ReportGenerateTask
 
 plugins {
-    // SỬA Ở ĐÂY: Thêm phiên bản cho plugin và đổi sang loại cho Android
     id 'com.android.library' version '7.4.2'
     id 'org.jetbrains.kotlin.android' version '2.0.20'
     id 'com.google.devtools.ksp' version '2.0.20-1.0.25'
@@ -40,12 +39,16 @@ android {
             withJavadocJar()
         }
     }
+
+    // SỬA Ở ĐÂY: Di chuyển cấu hình test vào trong khối android
+    testOptions {
+        unitTests.all {
+            it.useJUnitPlatform()
+        }
+    }
 }
 
-
-test {
-    useJUnitPlatform()
-}
+// KHỐI test { ... } CŨ ĐÃ ĐƯỢC XÓA KHỎI ĐÂY
 
 ksp {
     arg("summaryOutputDir", "${projectDir}/.github")
