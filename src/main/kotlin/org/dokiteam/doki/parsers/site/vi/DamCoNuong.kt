@@ -186,30 +186,30 @@ internal class DamCoNuong(context: MangaLoaderContext) :
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
     val doc = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseHtml()
 
-    // 1. Tìm thẻ script có chứa "window.encryptionConfig". Đây là nguồn dữ liệu chính xác.
+    // 1. Tìm script chứa 'window.encryptionConfig'. Logic này đã được xác nhận là đúng.
     val scriptContent = doc.selectFirst("script:containsData(window.encryptionConfig)")
         ?.data()
-        ?: throw ParseException("Không tìm thấy script 'window.encryptionConfig'. Cấu trúc trang đã thay đổi.", chapter.url)
+        ?: throw ParseException("Không tìm thấy script 'window.encryptionConfig'.", chapter.url)
 
-    // 2. Dùng Regex để trích xuất mảng "fallbackUrls" từ nội dung script.
-    // Group 1 (\[.*?\]) sẽ lấy toàn bộ nội dung của mảng, bao gồm cả dấu ngoặc vuông.
+    // 2. Regex để trích xuất mảng "fallbackUrls".
     val fallbackUrlsRegex = Regex(""""fallbackUrls"\s*:\s*(\[.*?\])""")
     val arrayString = fallbackUrlsRegex.find(scriptContent)?.groupValues?.get(1)
         ?: throw ParseException("Không tìm thấy mảng 'fallbackUrls' trong script.", chapter.url)
 
-    // 3. Dùng một Regex khác để trích xuất từng URL riêng lẻ từ chuỗi mảng đã lấy được.
-    // Group 1 ([^"]+) sẽ lấy nội dung bên trong cặp dấu ngoặc kép.
+    // 3. Regex để trích xuất từng URL riêng lẻ.
     val urlRegex = Regex(""""([^"]+)"""")
     val imageUrls = urlRegex.findAll(arrayString).map {
-        // Lấy URL và loại bỏ các ký tự không mong muốn như '\r'
-        it.groupValues[1].trim()
+        // 4. LÀM SẠCH URL TRIỆT ĐỂ:
+        // - Lấy URL từ group 1.
+        // - Thay thế tất cả các ký tự '\r', '\n' và các ký tự whitespace khác bằng chuỗi rỗng.
+        it.groupValues[1].replace(Regex("""[\r\n\s]"""), "")
     }.toList()
 
     if (imageUrls.isEmpty()) {
-        throw ParseException("Trích xuất được mảng 'fallbackUrls' nhưng không tìm thấy URL nào bên trong.", chapter.url)
+        throw ParseException("Không tìm thấy URL nào trong 'fallbackUrls'.", chapter.url)
     }
 
-    // 4. Tạo danh sách MangaPage.
+    // 5. Tạo danh sách MangaPage.
     return imageUrls.map { url ->
         MangaPage(
             id = generateUid(url),
