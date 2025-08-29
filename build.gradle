@@ -1,19 +1,17 @@
 import tasks.ReportGenerateTask
 
 plugins {
-    // SỬA Ở ĐÂY: Chuyển từ thư viện Java sang thư viện Android
-    id 'com.android.library'
-    id 'org.jetbrains.kotlin.android' // Thêm plugin Kotlin cho Android
-    id 'com.google.devtools.ksp'
+    // SỬA Ở ĐÂY: Thêm phiên bản cho plugin và đổi sang loại cho Android
+    id 'com.android.library' version '7.4.2'
+    id 'org.jetbrains.kotlin.android' version '2.0.20'
+    id 'com.google.devtools.ksp' version '2.0.20-1.0.25'
     id 'maven-publish'
 }
 
 group = 'org.dokiteam'
 version = '1.0'
 
-// THÊM VÀO: Khối cấu hình Android bắt buộc
 android {
-    // Thay thế bằng package name chính của bạn nếu cần
     namespace 'org.dokiteam.doki.parsers'
     compileSdk 34
 
@@ -21,13 +19,11 @@ android {
         minSdk 21
     }
 
-    // Di chuyển compileOptions vào đây
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
     }
 
-    // Di chuyển kotlinOptions vào đây
     kotlinOptions {
         jvmTarget = '1.8'
         freeCompilerArgs += [
@@ -38,7 +34,6 @@ android {
         ]
     }
 
-    // Giữ nguyên cấu hình publishing nhưng có thể cần điều chỉnh sau này cho AAR
     publishing {
         singleVariant('release') {
             withSourcesJar()
@@ -57,7 +52,6 @@ ksp {
 }
 
 kotlin {
-    // Cấu hình toolchain đã được xử lý trong khối android
     explicitApi = 'warning'
     sourceSets {
         main.kotlin.srcDirs += 'build/generated/ksp/main/kotlin'
@@ -70,7 +64,7 @@ afterEvaluate {
             release(MavenPublication) {
                 from components.release
                 groupId = 'org.dokiteam'
-                artifactId = 'parsers' // Đặt tên artifactId của bạn ở đây
+                artifactId = 'parsers'
                 version = '1.0'
             }
         }
