@@ -90,10 +90,18 @@ private class MimiHentaiImageServer(port: Int) : NanoHTTPD(port) {
 				newFixedLengthResponse(Response.Status.OK, MIME_WEBP, ByteArrayInputStream(descrambledBytes), descrambledBytes.size.toLong())
 			} catch (e: Exception) {
 				e.printStackTrace()
-				newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed to process image: ${e.message}")
+				newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Processing failed inside task: ${e.message}")
 			}
 		}
-		return future.get()
+
+        return try {
+            future.get()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            newFixedLengthResponse(
+                Response.Status.INTERNAL_ERROR, "text/plain", "Failed to get future result: ${e.message}"
+            )
+        }
 	}
 
 	private fun hexToBytes(hex: String): ByteArray {
