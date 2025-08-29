@@ -186,30 +186,30 @@ internal class DamCoNuong(context: MangaLoaderContext) :
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
     val doc = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseHtml()
 
-    // 1. Regex được nâng cấp để tìm kiếm các key phổ biến: "image", "src", hoặc "url".
-    // (?:'|"|`) -> Non-capturing group, khớp với nháy đơn, kép, hoặc backtick.
-    // (image|src|url) -> Capturing group 1, khớp với một trong các từ khóa.
-    // ([^'"`]+) -> Capturing group 2, đây chính là URL chúng ta cần.
-    val imagesRegex = Regex("""(?:'|"|`)(?:image|src|url)(?:'|"|`)\s*:\s*(?:'|"|`)([^'"`]+)(?:'|"|`)""")
+    // 1. Tìm thẻ script có chứa "window.encryptionConfig". Đây là nguồn dữ liệu chính xác.
+    val scriptContent = doc.selectFirst("script:containsData(window.encryptionConfig)")
+        ?.data()
+        ?: throw ParseException("Không tìm thấy script 'window.encryptionConfig'. Cấu trúc trang đã thay đổi.", chapter.url)
 
-    // 2. Logic tìm script tốt nhất vẫn giữ nguyên vì nó đã hoạt động hiệu quả.
-    val bestScriptContent = doc.select("script:not([src])")
-        .map { it.data() }
-        .maxByOrNull { scriptData -> imagesRegex.findAll(scriptData).count() }
-        ?: throw ParseException("Không tìm thấy bất kỳ script nào có chứa dữ liệu ảnh trên trang.", chapter.url)
+    // 2. Dùng Regex để trích xuất mảng "fallbackUrls" từ nội dung script.
+    // Group 1 (\[.*?\]) sẽ lấy toàn bộ nội dung của mảng, bao gồm cả dấu ngoặc vuông.
+    val fallbackUrlsRegex = Regex(""""fallbackUrls"\s*:\s*(\[.*?\])""")
+    val arrayString = fallbackUrlsRegex.find(scriptContent)?.groupValues?.get(1)
+        ?: throw ParseException("Không tìm thấy mảng 'fallbackUrls' trong script.", chapter.url)
 
-    // 3. Trích xuất tất cả URL từ script tốt nhất.
-    // Chú ý: URL nằm ở groupValues[1] vì regex giờ có 2 capturing group.
-    val imageUrls = imagesRegex.findAll(bestScriptContent).map { matchResult ->
-        matchResult.groupValues[1].replace("\\/", "/")
+    // 3. Dùng một Regex khác để trích xuất từng URL riêng lẻ từ chuỗi mảng đã lấy được.
+    // Group 1 ([^"]+) sẽ lấy nội dung bên trong cặp dấu ngoặc kép.
+    val urlRegex = Regex(""""([^"]+)"""")
+    val imageUrls = urlRegex.findAll(arrayString).map {
+        // Lấy URL và loại bỏ các ký tự không mong muốn như '\r'
+        it.groupValues[1].trim()
     }.toList()
 
-    // 4. Kiểm tra lại lần cuối.
     if (imageUrls.isEmpty()) {
-        throw ParseException("Đã xác định được script nhưng không trích xuất được URL ảnh. Cấu trúc dữ liệu có thể đã thay đổi hoàn toàn.", chapter.url)
+        throw ParseException("Trích xuất được mảng 'fallbackUrls' nhưng không tìm thấy URL nào bên trong.", chapter.url)
     }
 
-    // 5. Tạo danh sách trang.
+    // 4. Tạo danh sách MangaPage.
     return imageUrls.map { url ->
         MangaPage(
             id = generateUid(url),
