@@ -186,29 +186,30 @@ internal class DamCoNuong(context: MangaLoaderContext) :
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
     val doc = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseHtml()
 
-    // Regex vẫn giữ nguyên để tìm kiếm key "image" và trích xuất URL.
-    val imagesRegex = Regex("""["']image["']\s*:\s*["']([^"']+)["']""")
+    // 1. Regex được nâng cấp để tìm kiếm các key phổ biến: "image", "src", hoặc "url".
+    // (?:'|"|`) -> Non-capturing group, khớp với nháy đơn, kép, hoặc backtick.
+    // (image|src|url) -> Capturing group 1, khớp với một trong các từ khóa.
+    // ([^'"`]+) -> Capturing group 2, đây chính là URL chúng ta cần.
+    val imagesRegex = Regex("""(?:'|"|`)(?:image|src|url)(?:'|"|`)\s*:\s*(?:'|"|`)([^'"`]+)(?:'|"|`)""")
 
-    // 1. Thay đổi cốt lõi: Tìm script tốt nhất bằng cách đếm số lượng URL ảnh mà nó chứa.
-    // - doc.select("script:not([src])") -> Lấy tất cả script inline.
-    // - .map { it.data() } -> Chỉ lấy nội dung text của chúng.
-    // - .maxByOrNull { ... } -> Tìm ra script có số lượng kết quả khớp với regex nhiều nhất.
+    // 2. Logic tìm script tốt nhất vẫn giữ nguyên vì nó đã hoạt động hiệu quả.
     val bestScriptContent = doc.select("script:not([src])")
         .map { it.data() }
         .maxByOrNull { scriptData -> imagesRegex.findAll(scriptData).count() }
         ?: throw ParseException("Không tìm thấy bất kỳ script nào có chứa dữ liệu ảnh trên trang.", chapter.url)
 
-    // 2. Trích xuất tất cả URL từ script tốt nhất đã được tìm thấy.
+    // 3. Trích xuất tất cả URL từ script tốt nhất.
+    // Chú ý: URL nằm ở groupValues[1] vì regex giờ có 2 capturing group.
     val imageUrls = imagesRegex.findAll(bestScriptContent).map { matchResult ->
         matchResult.groupValues[1].replace("\\/", "/")
     }.toList()
 
-    // 3. Kiểm tra xem có trích xuất được URL nào không.
+    // 4. Kiểm tra lại lần cuối.
     if (imageUrls.isEmpty()) {
-        throw ParseException("Đã xác định được script nhưng không trích xuất được URL ảnh. Cấu trúc JSON có thể đã thay đổi.", chapter.url)
+        throw ParseException("Đã xác định được script nhưng không trích xuất được URL ảnh. Cấu trúc dữ liệu có thể đã thay đổi hoàn toàn.", chapter.url)
     }
 
-    // 4. Tạo danh sách trang.
+    // 5. Tạo danh sách trang.
     return imageUrls.map { url ->
         MangaPage(
             id = generateUid(url),
