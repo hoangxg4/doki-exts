@@ -186,21 +186,16 @@ internal class DamCoNuong(context: MangaLoaderContext) :
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
     val doc = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseHtml()
 
-    // 1. Tìm thẻ script chứa dữ liệu ảnh một cách chính xác hơn.
-    // Script này phải là inline (không có src), chứa biến 'const sources' và một phần đường dẫn ảnh 'storage/images'.
+    // 1. Tìm thẻ script chứa dữ liệu ảnh một cách chính xác.
     val scriptContent = doc.select("script:not([src])").firstOrNull { script ->
         val data = script.data()
         data.contains("const sources", ignoreCase = true) && data.contains("storage/images")
     }?.data() ?: throw ParseException("Không tìm thấy script chứa danh sách ảnh. Cấu trúc trang có thể đã thay đổi.", chapter.url)
 
-    // 2. Regex được cải tiến để linh hoạt hơn, tìm kiếm key "image" và trích xuất URL.
-    // ["']image["'] -> khớp với "image" hoặc 'image'
-    // \s*:\s* -> khớp với dấu hai chấm, cho phép có khoảng trắng
-    // ["']([^"']+)["'] -> khớp với URL nằm trong nháy đơn hoặc kép và lấy nội dung URL đó
+    // 2. Regex để trích xuất URL từ key "image".
     val imagesRegex = Regex("""["']image["']\s*:\s*["']([^"']+)["']""")
 
     val imageUrls = imagesRegex.findAll(scriptContent).map { matchResult ->
-        // Lấy kết quả từ group 1 và unescape các ký tự đặc biệt như '\/'
         matchResult.groupValues[1].replace("\\/", "/")
     }.toList()
 
@@ -208,10 +203,10 @@ internal class DamCoNuong(context: MangaLoaderContext) :
         throw ParseException("Không trích xuất được URL ảnh nào từ script. Regex có thể cần cập nhật.", chapter.url)
     }
 
-    // 3. Tạo danh sách MangaPage từ các URL đã tìm được.
-    return imageUrls.mapIndexed { index, url ->
+    // 3. Tạo danh sách MangaPage. Lỗi đã được sửa ở dòng id = generateUid(url)
+    return imageUrls.map { url ->
         MangaPage(
-            id = generateUid(chapter.id, index), // Tạo ID duy nhất cho mỗi trang
+            id = generateUid(url), // << SỬA LỖI TẠI ĐÂY
             url = url,
             preview = null,
             source = source,
