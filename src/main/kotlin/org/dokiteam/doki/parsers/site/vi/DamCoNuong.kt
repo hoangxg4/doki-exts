@@ -186,27 +186,32 @@ internal class DamCoNuong(context: MangaLoaderContext) :
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
     val doc = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseHtml()
 
-    // 1. Tìm thẻ script chứa dữ liệu ảnh một cách chính xác.
-    val scriptContent = doc.select("script:not([src])").firstOrNull { script ->
-        val data = script.data()
-        data.contains("const sources", ignoreCase = true) && data.contains("storage/images")
-    }?.data() ?: throw ParseException("Không tìm thấy script chứa danh sách ảnh. Cấu trúc trang có thể đã thay đổi.", chapter.url)
-
-    // 2. Regex để trích xuất URL từ key "image".
+    // Regex vẫn giữ nguyên để tìm kiếm key "image" và trích xuất URL.
     val imagesRegex = Regex("""["']image["']\s*:\s*["']([^"']+)["']""")
 
-    val imageUrls = imagesRegex.findAll(scriptContent).map { matchResult ->
+    // 1. Thay đổi cốt lõi: Tìm script tốt nhất bằng cách đếm số lượng URL ảnh mà nó chứa.
+    // - doc.select("script:not([src])") -> Lấy tất cả script inline.
+    // - .map { it.data() } -> Chỉ lấy nội dung text của chúng.
+    // - .maxByOrNull { ... } -> Tìm ra script có số lượng kết quả khớp với regex nhiều nhất.
+    val bestScriptContent = doc.select("script:not([src])")
+        .map { it.data() }
+        .maxByOrNull { scriptData -> imagesRegex.findAll(scriptData).count() }
+        ?: throw ParseException("Không tìm thấy bất kỳ script nào có chứa dữ liệu ảnh trên trang.", chapter.url)
+
+    // 2. Trích xuất tất cả URL từ script tốt nhất đã được tìm thấy.
+    val imageUrls = imagesRegex.findAll(bestScriptContent).map { matchResult ->
         matchResult.groupValues[1].replace("\\/", "/")
     }.toList()
 
+    // 3. Kiểm tra xem có trích xuất được URL nào không.
     if (imageUrls.isEmpty()) {
-        throw ParseException("Không trích xuất được URL ảnh nào từ script. Regex có thể cần cập nhật.", chapter.url)
+        throw ParseException("Đã xác định được script nhưng không trích xuất được URL ảnh. Cấu trúc JSON có thể đã thay đổi.", chapter.url)
     }
 
-    // 3. Tạo danh sách MangaPage. Lỗi đã được sửa ở dòng id = generateUid(url)
+    // 4. Tạo danh sách trang.
     return imageUrls.map { url ->
         MangaPage(
-            id = generateUid(url), // << SỬA LỖI TẠI ĐÂY
+            id = generateUid(url),
             url = url,
             preview = null,
             source = source,
