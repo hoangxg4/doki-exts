@@ -47,12 +47,15 @@ android {
     }
 }
 
+
 ksp {
     arg("summaryOutputDir", "${projectDir}/.github")
 }
 
 kotlin {
+    // SỬA Ở ĐÂY: Yêu cầu Gradle sử dụng JDK 17 để build
     jvmToolchain(17)
+    
     explicitApi = 'warning'
     sourceSets {
         main.kotlin.srcDirs += 'build/generated/ksp/main/kotlin'
@@ -81,8 +84,6 @@ dependencies {
     implementation 'androidx.collection:collection:1.5.0'
     implementation 'org.nanohttpd:nanohttpd:2.3.1'
 
-    // Không cần 'com.twelvemonkeys.imageio' nữa
-    
     ksp project(':doki-ksp')
 
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.1'
