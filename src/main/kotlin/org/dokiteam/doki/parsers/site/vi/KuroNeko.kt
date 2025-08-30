@@ -1,8 +1,8 @@
 package org.dokiteam.doki.parsers.site.vi
 
-import kotlinx.coroutines.delay // Thêm import này
-import kotlinx.coroutines.sync.Mutex // Thêm import này
-import kotlinx.coroutines.sync.withLock // Thêm import này
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
@@ -16,20 +16,12 @@ internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context,
 
 	override val configKeyDomain = ConfigKey.Domain("vi-hentai.moe")
 
-	// --- CÁC THAY ĐỔI BẮT ĐẦU TỪ ĐÂY ---
-
 	companion object {
-		// Khoảng thời gian chờ tối thiểu giữa 2 request (tính bằng mili giây)
-		// 1500L = 1.5 giây. Bạn có thể tăng/giảm giá trị này nếu cần.
 		private const val REQUEST_DELAY_MS = 1500L
 	}
 
-	// Mutex để đảm bảo các request không bị gọi đồng thời một cách hỗn loạn
 	private val requestMutex = Mutex()
-	// Ghi nhận thời điểm request cuối cùng được thực hiện
 	private var lastRequestTime = 0L
-
-	// --- KẾT THÚC THAY ĐỔI ---
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
@@ -59,18 +51,14 @@ internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context,
 	)
 
 	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
-		// --- THÊM LOGIC RATE LIMITING VÀO ĐẦU HÀM ---
 		requestMutex.withLock {
 			val currentTime = System.currentTimeMillis()
 			val timeSinceLastRequest = currentTime - lastRequestTime
 			if (timeSinceLastRequest < REQUEST_DELAY_MS) {
-				// Nếu request mới quá gần, đợi cho đủ thời gian
 				delay(REQUEST_DELAY_MS - timeSinceLastRequest)
 			}
-			// Cập nhật lại thời gian của request lần này
 			lastRequestTime = System.currentTimeMillis()
 		}
-		// --- KẾT THÚC LOGIC RATE LIMITING ---
 
 		val url = buildString {
 			if (!filter.author.isNullOrEmpty()) {
@@ -225,11 +213,14 @@ internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context,
 		)
 	}
 
+	// --- CẬP NHẬT HÀM getPages TẠI ĐÂY ---
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
 		val fullUrl = chapter.url.toAbsoluteUrl(domain)
 		val doc = webClient.httpGet(fullUrl).parseHtml()
-		return doc.select("div.text-center img.lazy").mapNotNull { img ->
-			val url = img.requireSrc()
+
+		// Sử dụng selector mới để lấy đúng các thẻ img chứa ảnh truyện
+		return doc.select("div.text-center img.max-w-full").mapNotNull { img ->
+			val url = img.attrOrNull("src") ?: return@mapNotNull null
 			MangaPage(
 				id = generateUid(url),
 				url = url,
@@ -238,6 +229,7 @@ internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context,
 			)
 		}
 	}
+	// --- KẾT THÚC CẬP NHẬT ---
 
 	private suspend fun availableTags(): Set<MangaTag> {
 		val doc = webClient.httpGet("https://$domain/tim-kiem").parseHtml()
