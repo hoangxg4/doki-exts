@@ -21,7 +21,6 @@ internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context,
 		private const val SEARCH_RESULT_LIMIT = 24
 	}
 
-	// Mutex và biến lastRequestTime này sẽ được dùng chung cho cả getListPage và getDetails
 	private val requestMutex = Mutex()
 	private var lastRequestTime = 0L
 
@@ -97,7 +96,7 @@ internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context,
 					)
 				}
 
-				return@buildString // end of buildString
+				return@buildString
 			}
 
 			append("https://")
@@ -175,9 +174,7 @@ internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context,
 			}
 	}
 
-	// --- CẬP NHẬT HÀM getDetails TẠI ĐÂY ---
 	override suspend fun getDetails(manga: Manga): Manga {
-		// Thêm logic rate limiting vào đầu hàm
 		requestMutex.withLock {
 			val currentTime = System.currentTimeMillis()
 			val timeSinceLastRequest = currentTime - lastRequestTime
@@ -227,7 +224,6 @@ internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context,
 				},
 		)
 	}
-	// --- KẾT THÚC CẬP NHẬT ---
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
 		val fullUrl = chapter.url.toAbsoluteUrl(domain)
