@@ -208,7 +208,6 @@ override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListF
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
 		val fullUrl = chapter.url.toAbsoluteUrl(domain)
-		val headers = mapOf("Referer" to fullUrl).toHeaders()
 		val doc = webClient.httpGet(fullUrl, extraHeaders = headers).parseHtml()
 
 		return doc.select("div.text-center div.lazy")
