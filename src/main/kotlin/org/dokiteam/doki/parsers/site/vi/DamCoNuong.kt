@@ -186,7 +186,6 @@ internal class DamCoNuong(context: MangaLoaderContext) :
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
     val doc = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseHtml()
 
-    // --- CƠ CHẾ 1: Thử tìm ảnh trong script trước (ưu tiên) ---
     val scriptImages = doc.selectFirst("script:containsData(window.encryptionConfig)")?.data()?.let { scriptContent ->
         val fallbackUrlsRegex = Regex(""""fallbackUrls"\s*:\s*(\[.*?\])""")
         val arrayString = fallbackUrlsRegex.find(scriptContent)?.groupValues?.get(1) ?: return@let null
@@ -198,7 +197,6 @@ internal class DamCoNuong(context: MangaLoaderContext) :
     }
 
     if (scriptImages != null) {
-        // Nếu tìm thấy ảnh bằng Cơ chế 1, trả về kết quả ngay
         return scriptImages.map { url ->
             MangaPage(
                 id = generateUid(url),
@@ -209,11 +207,9 @@ internal class DamCoNuong(context: MangaLoaderContext) :
         }
     }
 
-    // --- CƠ CHẾ 2: Nếu không có script, thử tìm ảnh trong thẻ <img> (dự phòng) ---
     val tagImages = doc.select("div#chapter-content img[src]")
     if (tagImages.isNotEmpty()) {
         return tagImages.map { imgElement ->
-            // Lấy URL và dùng .trim() để dọn dẹp ký tự thừa như '\n'
             val imageUrl = imgElement.attr("abs:src").trim()
             MangaPage(
                 id = generateUid(imageUrl),
@@ -223,10 +219,6 @@ internal class DamCoNuong(context: MangaLoaderContext) :
             )
         }
     }
-
-    // --- Nếu cả 2 cơ chế đều thất bại, báo lỗi ---
-    throw ParseException("Không tìm thấy bất kỳ nguồn ảnh nào (đã thử cả script và thẻ img).", chapter.url)
-}
 
 	private fun parseChapterDate(date: String?): Long {
 		if (date == null) return 0
