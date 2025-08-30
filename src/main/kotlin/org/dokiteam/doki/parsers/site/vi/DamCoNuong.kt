@@ -219,6 +219,7 @@ internal class DamCoNuong(context: MangaLoaderContext) :
             )
         }
     }
+	}
 
 	private fun parseChapterDate(date: String?): Long {
 		if (date == null) return 0
