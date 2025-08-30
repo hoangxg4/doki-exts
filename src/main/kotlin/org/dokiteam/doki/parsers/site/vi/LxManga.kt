@@ -1,5 +1,6 @@
 package org.dokiteam.doki.parsers.site.vi
 
+import okhttp3.Headers.Companion.toHeaders
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
@@ -120,9 +121,9 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 			}
 		}
 
-        // Thêm Referer header để giả lập request từ trình duyệt
-		val headers = mapOf("Referer" to baseUrl)
-		val doc = webClient.httpGet(url, headers = headers).parseHtml()
+        // SỬA LỖI: Chuyển Map thành Headers và dùng đúng tên tham số 'extraHeaders'
+		val headers = mapOf("Referer" to baseUrl).toHeaders()
+		val doc = webClient.httpGet(url, extraHeaders = headers).parseHtml()
 
 		return doc.select("div.grid div.relative").map { div ->
 			val href = div.selectFirst("a[href^=/truyen/]")?.attrOrNull("href")
@@ -150,9 +151,9 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 
 	override suspend fun getDetails(manga: Manga): Manga {
 		val fullUrl = manga.url.toAbsoluteUrl(domain)
-        // Thêm Referer header
-		val headers = mapOf("Referer" to fullUrl)
-		val root = webClient.httpGet(fullUrl, headers = headers).parseHtml()
+        // SỬA LỖI: Chuyển Map thành Headers và dùng đúng tên tham số 'extraHeaders'
+		val headers = mapOf("Referer" to fullUrl).toHeaders()
+		val root = webClient.httpGet(fullUrl, extraHeaders = headers).parseHtml()
 
 		val chapterDateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", Locale.ROOT).apply {
 			timeZone = TimeZone.getTimeZone("GMT+7")
@@ -202,9 +203,9 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
 		val fullUrl = chapter.url.toAbsoluteUrl(domain)
-        // Thêm Referer header, rất quan trọng để server ảnh chấp nhận request
-		val headers = mapOf("Referer" to fullUrl)
-		val doc = webClient.httpGet(fullUrl, headers = headers).parseHtml()
+        // SỬA LỖI: Chuyển Map thành Headers và dùng đúng tên tham số 'extraHeaders'
+		val headers = mapOf("Referer" to fullUrl).toHeaders()
+		val doc = webClient.httpGet(fullUrl, extraHeaders = headers).parseHtml()
 
 		return doc.select("div.text-center div.lazy")
 			.mapNotNull { div ->
@@ -226,9 +227,9 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 
 	private suspend fun availableTags(): Set<MangaTag> {
 		val url = "https://$domain/the-loai"
-        // Thêm Referer header
-		val headers = mapOf("Referer" to "https://$domain/")
-		val doc = webClient.httpGet(url, headers = headers).parseHtml()
+        // SỬA LỖI: Chuyển Map thành Headers và dùng đúng tên tham số 'extraHeaders'
+		val headers = mapOf("Referer" to "https://$domain/").toHeaders()
+		val doc = webClient.httpGet(url, extraHeaders = headers).parseHtml()
 
 		return doc.select("nav.grid.grid-cols-3.md\\:grid-cols-8 button").map { button ->
 			val key = button.attr("wire:click").substringAfterLast(", '").substringBeforeLast("')")
