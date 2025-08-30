@@ -80,8 +80,6 @@ private class MimiHentaiImageServer(port: Int) : NanoHTTPD(port) {
         }
 
         val future = imageProcessingExecutor.submit<Response> {
-            var originalBitmap: Bitmap? = null
-            var unscrambledBitmap: Bitmap? = null
             try {
                 imageCache.get(cacheKey)?.let { cachedBytes ->
                     return@submit newFixedLengthResponse(
@@ -93,23 +91,17 @@ private class MimiHentaiImageServer(port: Int) : NanoHTTPD(port) {
                 val imageRequest = Request.Builder().url(imageUrl).build()
                 val imageResponse = imageClient.newCall(imageRequest).execute()
                 val scrambledBytes = imageResponse.body?.bytes() ?: throw IOException("Empty response body")
-
-                val options = BitmapFactory.Options().apply {
-                    inPreferredConfig = Bitmap.Config.RGB_565
-                    inMutable = true
-                }
-
-                originalBitmap = BitmapFactory.decodeByteArray(scrambledBytes, 0, scrambledBytes.size, options)
+                val originalBitmap = BitmapFactory.decodeByteArray(scrambledBytes, 0, scrambledBytes.size)
                     ?: throw IOException("Failed to decode bitmap")
 
-                unscrambledBitmap = unscrambleImage(originalBitmap!!, drm, secretKey)
+                val unscrambledBitmap = unscrambleImage(originalBitmap, drm, secretKey)
 
                 val outputStream = ByteArrayOutputStream()
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    unscrambledBitmap!!.compress(Bitmap.CompressFormat.WEBP_LOSSY, 90, outputStream)
+                    unscrambledBitmap.compress(Bitmap.CompressFormat.WEBP_LOSSY, 90, outputStream)
                 } else {
                     @Suppress("DEPRECATION")
-                    unscrambledBitmap!!.compress(Bitmap.CompressFormat.WEBP, 90, outputStream)
+                    unscrambledBitmap.compress(Bitmap.CompressFormat.WEBP, 90, outputStream)
                 }
                 val descrambledBytes = outputStream.toByteArray()
                 imageCache.put(cacheKey, descrambledBytes)
@@ -123,9 +115,6 @@ private class MimiHentaiImageServer(port: Int) : NanoHTTPD(port) {
                 newFixedLengthResponse(
                     Response.Status.INTERNAL_ERROR, "text/plain", "Processing failed inside task: ${e.message}"
                 )
-            } finally {
-                originalBitmap?.recycle()
-                unscrambledBitmap?.recycle()
             }
         }
         
@@ -154,43 +143,32 @@ private class MimiHentaiImageServer(port: Int) : NanoHTTPD(port) {
 	}
 
 	private fun parseMetadata(meta: String): JSONObject {
-        val out = JSONObject()
-        val pos = JSONObject()
-        val dims = JSONObject()
-        var sw = 0
-        var sh = 0
-        for (t in meta.split("|")) {
-            when {
-                t.startsWith("sw:") -> sw = t.substring(3).toIntOrNull() ?: 0
-                t.startsWith("sh:") -> sh = t.substring(3).toIntOrNull() ?: 0
-                t.contains("@") && t.contains(">") -> {
-                    val parts1 = t.split(">")
-                    if (parts1.size < 2) continue
-
-                    val (L, R) = parts1
-                    
-                    val parts2 = L.split("@")
-                    if (parts2.size < 2) continue
-                    
-                    val (n, r) = parts2
-                    
-                    val coords = r.split(",").map { it.trim().toIntOrNull() ?: 0 }
-                    if (coords.size == 4) {
-                        val (x, y, w, h) = coords
-                        dims.put(n, JSONObject().apply {
-                            put("x", x); put("y", y); put("width", w); put("height", h)
-                        })
-                        pos.put(n, R)
-                    }
-                }
-            }
-        }
-        out.put("sw", sw)
-        out.put("sh", sh)
-        out.put("pos", pos)
-        out.put("dims", dims)
-        return out
-    }
+		val out = JSONObject()
+		val pos = JSONObject()
+		val dims = JSONObject()
+		var sw = 0
+		var sh = 0
+		for (t in meta.split("|")) {
+			when {
+				t.startsWith("sw:") -> sw = t.substring(3).toInt()
+				t.startsWith("sh:") -> sh = t.substring(3).toInt()
+				t.contains("@") && t.contains(">") -> {
+					val (L, R) = t.split(">")
+					val (n, r) = L.split("@")
+					val (x, y, w, h) = r.split(",").map { it.toInt() }
+					dims.put(n, JSONObject().apply {
+						put("x", x); put("y", y); put("width", w); put("height", h)
+					})
+					pos.put(n, R)
+				}
+			}
+		}
+		out.put("sw", sw)
+		out.put("sh", sh)
+		out.put("pos", pos)
+		out.put("dims", dims)
+		return out
+	}
 
 	private fun unscrambleImage(bitmap: Bitmap, drm: String, key: String): Bitmap {
 		val decrypted = xorDecryptHexWithKey(drm, key)
@@ -201,73 +179,67 @@ private class MimiHentaiImageServer(port: Int) : NanoHTTPD(port) {
 
 		val fullW = bitmap.width
 		val fullH = bitmap.height
-        
-        var working: Bitmap? = null
-        var result: Bitmap? = null
-		try {
-            working = Bitmap.createBitmap(bitmap, 0, 0, sw, sh)
 
-            val keys = arrayOf("00", "01", "02", "10", "11", "12", "20", "21", "22")
-            val W = sw / 3
-            val H = sh / 3
-            val rw = sw % 3
-            val rh = sh % 3
-            val defaultDims = HashMap<String, IntArray>().apply {
-                for (k in keys) {
-                    val i = k[0].digitToInt()
-                    val j = k[1].digitToInt()
-                    val w = W + if (j == 2) rw else 0
-                    val h = H + if (i == 2) rh else 0
-                    put(k, intArrayOf(j * W, i * H, w, h))
-                }
-            }
-            val dimsJson = metadata.optJSONObject("dims") ?: JSONObject()
-            val dims = HashMap<String, IntArray>().apply {
-                for (k in keys) {
-                    val jo = dimsJson.optJSONObject(k)
-                    if (jo != null) {
-                        put(k, intArrayOf(jo.getInt("x"), jo.getInt("y"), jo.getInt("width"), jo.getInt("height")))
-                    } else {
-                        put(k, defaultDims.getValue(k))
-                    }
-                }
-            }
-            val pos = metadata.optJSONObject("pos") ?: JSONObject()
-            val inv = HashMap<String, String>().apply {
-                val it = pos.keys()
-                while (it.hasNext()) {
-                    val a = it.next()
-                    val b = pos.getString(a)
-                    put(b, a)
-                }
-            }
+		val working = Bitmap.createBitmap(bitmap, 0, 0, sw, sh)
 
-            result = Bitmap.createBitmap(fullW, fullH, Bitmap.Config.RGB_565)
-            val canvas = Canvas(result!!)
+		val keys = arrayOf("00", "01", "02", "10", "11", "12", "20", "21", "22")
+		val W = sw / 3
+		val H = sh / 3
+		val rw = sw % 3
+		val rh = sh % 3
+		val defaultDims = HashMap<String, IntArray>().apply {
+			for (k in keys) {
+				val i = k[0].digitToInt()
+				val j = k[1].digitToInt()
+				val w = W + if (j == 2) rw else 0
+				val h = H + if (i == 2) rh else 0
+				put(k, intArrayOf(j * W, i * H, w, h))
+			}
+		}
+		val dimsJson = metadata.optJSONObject("dims") ?: JSONObject()
+		val dims = HashMap<String, IntArray>().apply {
+			for (k in keys) {
+				val jo = dimsJson.optJSONObject(k)
+				if (jo != null) {
+					put(k, intArrayOf(jo.getInt("x"), jo.getInt("y"), jo.getInt("width"), jo.getInt("height")))
+				} else {
+					put(k, defaultDims.getValue(k))
+				}
+			}
+		}
+		val pos = metadata.optJSONObject("pos") ?: JSONObject()
+		val inv = HashMap<String, String>().apply {
+			val it = pos.keys()
+			while (it.hasNext()) {
+				val a = it.next()
+				val b = pos.getString(a)
+				put(b, a)
+			}
+		}
 
-            for (k in keys) {
-                val srcKey = inv[k] ?: continue
-                val s = dims.getValue(k)
-                val d = dims.getValue(srcKey)
-                canvas.drawBitmap(
-                    working!!,
-                    Rect(s[0], s[1], s[0] + s[2], s[1] + s[3]),
-                    Rect(d[0], d[1], d[0] + d[2], d[1] + d[3]),
-                    null
-                )
-            }
+		val result = Bitmap.createBitmap(fullW, fullH, Bitmap.Config.ARGB_8888)
+		val canvas = Canvas(result)
 
-            if (sh < fullH) {
-                canvas.drawBitmap(bitmap, Rect(0, sh, fullW, fullH), Rect(0, sh, fullW, fullH), null)
-            }
-            if (sw < fullW) {
-                canvas.drawBitmap(bitmap, Rect(sw, 0, fullW, sh), Rect(sw, 0, fullW, sh), null)
-            }
+		for (k in keys) {
+			val srcKey = inv[k] ?: continue
+			val s = dims.getValue(k)
+			val d = dims.getValue(srcKey)
+			canvas.drawBitmap(
+				working,
+				Rect(s[0], s[1], s[0] + s[2], s[1] + s[3]),
+				Rect(d[0], d[1], d[0] + d[2], d[1] + d[3]),
+				null
+			)
+		}
 
-            return result!!
-        } finally {
-            working?.recycle()
-        }
+		if (sh < fullH) {
+			canvas.drawBitmap(bitmap, Rect(0, sh, fullW, fullH), Rect(0, sh, fullW, fullH), null)
+		}
+		if (sw < fullW) {
+			canvas.drawBitmap(bitmap, Rect(sw, 0, fullW, sh), Rect(sw, 0, fullW, sh), null)
+		}
+
+		return result
 	}
 }
 
