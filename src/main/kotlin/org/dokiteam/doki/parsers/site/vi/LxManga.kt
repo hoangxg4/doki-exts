@@ -44,115 +44,116 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 		availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED, MangaState.PAUSED),
 	)
 
-	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
-		val baseUrl = "https://$domain"
-		val url = buildString {
-			append(baseUrl)
+	// ... (Các hàm khác giữ nguyên)
 
-			when {
-				!filter.query.isNullOrEmpty() -> {
-					append("/tim-kiem")
-					append("?filter[name]=")
-					append(filter.query.urlEncoded())
+override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
+    val baseUrl = "https://$domain"
+    val url = buildString {
+        // Logic xây dựng URL không thay đổi
+        append(baseUrl)
+        when {
+            !filter.query.isNullOrEmpty() -> {
+                append("/tim-kiem")
+                append("?filter[name]=")
+                append(filter.query.urlEncoded())
+                if (page > 1) {
+                    append("&page=")
+                    append(page)
+                }
+                append("&sort=")
+                append(
+                    when (order) {
+                        SortOrder.POPULARITY -> "-views"
+                        SortOrder.UPDATED -> "-updated_at"
+                        SortOrder.NEWEST -> "-created_at"
+                        SortOrder.ALPHABETICAL -> "name"
+                        SortOrder.ALPHABETICAL_DESC -> "-name"
+                        else -> "-updated_at"
+                    },
+                )
+            }
+            filter.tags.isNotEmpty() -> {
+                val tag = filter.tags.first()
+                append("/the-loai/")
+                append(tag.key)
+                append("?page=")
+                append(page)
+            }
+            else -> {
+                append("/danh-sach")
+                append("?sort=")
+                append(
+                    when (order) {
+                        SortOrder.POPULARITY -> "-views"
+                        SortOrder.UPDATED -> "-updated_at"
+                        SortOrder.NEWEST -> "-created_at"
+                        SortOrder.ALPHABETICAL -> "name"
+                        SortOrder.ALPHABETICAL_DESC -> "-name"
+                        else -> "-updated_at"
+                    },
+                )
+                append("&page=")
+                append(page)
+            }
+        }
+        if (filter.query.isNullOrEmpty()) {
+            append("&sort=")
+            when (order) {
+                SortOrder.POPULARITY -> append("-views")
+                SortOrder.UPDATED -> append("-updated_at")
+                SortOrder.NEWEST -> append("-created_at")
+                SortOrder.ALPHABETICAL -> append("name")
+                SortOrder.ALPHABETICAL_DESC -> append("-name")
+                else -> append("-updated_at")
+            }
+        }
+        if (filter.states.isNotEmpty()) {
+            append("&filter[status]=")
+            filter.states.forEach {
+                append(
+                    when (it) {
+                        MangaState.ONGOING -> "ongoing,"
+                        MangaState.FINISHED -> "completed,"
+                        MangaState.PAUSED -> "paused,"
+                        else -> "ongoing,completed,paused"
+                    },
+                )
+            }
+        }
+    }
 
-					if (page > 1) {
-						append("&page=")
-						append(page)
-					}
+    // Dùng httpGet thông thường vì trang không tải động nội dung này
+    val headers = mapOf("Referer" to baseUrl).toHeaders()
+    val doc = webClient.httpGet(url, extraHeaders = headers).parseHtml()
 
-					append("&sort=")
-					append(
-						when (order) {
-							SortOrder.POPULARITY -> "-views"
-							SortOrder.UPDATED -> "-updated_at"
-							SortOrder.NEWEST -> "-created_at"
-							SortOrder.ALPHABETICAL -> "name"
-							SortOrder.ALPHABETICAL_DESC -> "-name"
-							else -> "-updated_at"
-						},
-					)
-				}
+    // CẬP NHẬT: Sử dụng selector đã phân tích từ file index.html
+    return doc.select("div.manga-vertical").map { item ->
+        val titleElement = item.selectFirst("div.p-2 a.text-ellipsis")
+            ?: item.parseFailed("Không tìm thấy tiêu đề hoặc link manga!")
 
-				filter.tags.isNotEmpty() -> {
-					val tag = filter.tags.first()
-					append("/the-loai/")
-					append(tag.key)
+        val href = titleElement.attr("href")
+        val title = titleElement.text()
 
-					append("?page=")
-					append(page)
-				}
+        val coverUrl = item.selectFirst("div.cover")?.attr("data-bg").orEmpty()
 
-				else -> {
-					append("/danh-sach")
-					append("?sort=")
-					append(
-						when (order) {
-							SortOrder.POPULARITY -> "-views"
-							SortOrder.UPDATED -> "-updated_at"
-							SortOrder.NEWEST -> "-created_at"
-							SortOrder.ALPHABETICAL -> "name"
-							SortOrder.ALPHABETICAL_DESC -> "-name"
-							else -> "-updated_at"
-						},
-					)
-					append("&page=")
-					append(page)
-				}
-			}
+        Manga(
+            id = generateUid(href),
+            title = title,
+            altTitles = emptySet(),
+            url = href,
+            publicUrl = href.toAbsoluteUrl(domain),
+            rating = RATING_UNKNOWN,
+            contentRating = ContentRating.ADULT,
+            coverUrl = coverUrl,
+            tags = setOf(),
+            state = null,
+            authors = emptySet(),
+            source = source,
+        )
+    }
+}
 
-			if (filter.query.isNullOrEmpty()) {
-				append("&sort=")
-				when (order) {
-					SortOrder.POPULARITY -> append("-views")
-					SortOrder.UPDATED -> append("-updated_at")
-					SortOrder.NEWEST -> append("-created_at")
-					SortOrder.ALPHABETICAL -> append("name")
-					SortOrder.ALPHABETICAL_DESC -> append("-name")
-					else -> append("-updated_at")
-				}
-			}
-
-			if (filter.states.isNotEmpty()) {
-				append("&filter[status]=")
-				filter.states.forEach {
-					append(
-						when (it) {
-							MangaState.ONGOING -> "ongoing,"
-							MangaState.FINISHED -> "completed,"
-							MangaState.PAUSED -> "paused,"
-							else -> "ongoing,completed,paused"
-						},
-					)
-				}
-			}
-		}
-
-		val headers = mapOf("Referer" to baseUrl).toHeaders()
-		val doc = webClient.httpGet(url, extraHeaders = headers).parseHtml()
-
-		return doc.select("div.grid div.relative").map { div ->
-			val href = div.selectFirst("a[href^=/truyen/]")?.attrOrNull("href")
-				?: div.parseFailed("Không thể tìm thấy nguồn ảnh của Manga này!")
-			val coverUrl = div.selectFirstOrThrow("div.cover").let {
-				it.attrOrNull("data-bg") ?: it.attr("style").cssUrl()?.replace("s3.lxmanga.top", domain)
-			}.orEmpty()
-
-			Manga(
-				id = generateUid(href),
-				title = div.select("div.p-2 a.text-ellipsis").text(),
-				altTitles = emptySet(),
-				url = href,
-				publicUrl = href.toAbsoluteUrl(domain),
-				rating = RATING_UNKNOWN,
-				contentRating = ContentRating.ADULT,
-				coverUrl = coverUrl,
-				tags = setOf(),
-				state = null,
-				authors = emptySet(),
-				source = source,
-			)
-		}
-	}
+// ... (Các hàm khác giữ nguyên)
 
 	override suspend fun getDetails(manga: Manga): Manga {
 		val fullUrl = manga.url.toAbsoluteUrl(domain)
