@@ -189,7 +189,6 @@ internal class DamCoNuong(context: MangaLoaderContext) :
     val scriptImages = doc.selectFirst("script:containsData(window.encryptionConfig)")?.data()?.let { scriptContent ->
         val fallbackUrlsRegex = Regex(""""fallbackUrls"\s*:\s*(\[.*?\])""")
         val arrayString = fallbackUrlsRegex.find(scriptContent)?.groupValues?.get(1) ?: return@let null
-
         val urlRegex = Regex("""(https?:\\?/\\?[^"]+\.(?:jpg|jpeg|png|webp|gif))""")
         urlRegex.findAll(arrayString).map {
             it.groupValues[1].replace("\\/", "/")
@@ -219,7 +218,9 @@ internal class DamCoNuong(context: MangaLoaderContext) :
             )
         }
     }
-	}
+
+      throw ParseException("Không tìm thấy bất kỳ nguồn ảnh nào (đã thử cả script và thẻ img).", chapter.url)
+    }
 
 	private fun parseChapterDate(date: String?): Long {
 		if (date == null) return 0
