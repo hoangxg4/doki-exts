@@ -226,22 +226,21 @@ internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context,
 	}
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-    val doc = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseHtml()
-
-    return doc.select("div.text-center img").mapNotNull { img ->
-        // Lấy 'src' hoặc 'data-src' nếu 'src' rỗng, trả về null nếu cả hai đều rỗng
-        val url = img.attr("src").takeIf { it.isNotBlank() } 
-            ?: img.attr("data-src").takeIf { it.isNotBlank() }
-            ?: return@mapNotNull null
-
-        MangaPage(
-            id = generateUid(url),
-            url = url,
-            preview = null,
-            source = source,
-        )
-    }
-}
+    return webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseHtml()
+        .select("div.text-center img")
+        .mapNotNull { img ->
+            (img.attr("src").takeIf { it.isNotBlank() } ?: img.attr("data-src"))
+                .takeIf { it.isNotBlank() }
+                ?.let { url -> // Chỉ thực thi khối này nếu url không null và không rỗng
+                    MangaPage(
+                        id = generateUid(url),
+                        url = url,
+                        preview = null,
+                        source = source
+                    )
+                }
+        }
+	}
 
 	private suspend fun availableTags(): Set<MangaTag> {
 		val doc = webClient.httpGet("https://$domain/tim-kiem").parseHtml()
