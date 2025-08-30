@@ -154,32 +154,35 @@ private class MimiHentaiImageServer(port: Int) : NanoHTTPD(port) {
 	}
 
 	private fun parseMetadata(meta: String): JSONObject {
-		val out = JSONObject()
-		val pos = JSONObject()
-		val dims = JSONObject()
-		var sw = 0
-		var sh = 0
-		for (t in meta.split("|")) {
-			when {
-				t.startsWith("sw:") -> sw = t.substring(3).toInt()
-				t.startsWith("sh:") -> sh = t.substring(3).toInt()
-				t.contains("@") && t.contains(">") -> {
-					val (L, R) = t.split(">")
-					val (n, r) = L.split("@")
-					val (x, y, w, h) = r.split(",").map { it.toInt() }
-					dims.put(n, JSONObject().apply {
-						put("x", x); put("y", y); put("width", w); put("height", h)
-					})
-					pos.put(n, R)
-				}
-			}
-		}
-		out.put("sw", sw)
-		out.put("sh", sh)
-		out.put("pos", pos)
-		out.put("dims", dims)
-		return out
-	}
+        val out = JSONObject()
+        val pos = JSONObject()
+        val dims = JSONObject()
+        var sw = 0
+        var sh = 0
+        for (t in meta.split("|")) {
+            when {
+                t.startsWith("sw:") -> sw = t.substring(3).toIntOrNull() ?: 0
+                t.startsWith("sh:") -> sh = t.substring(3).toIntOrNull() ?: 0
+                t.contains("@") && t.contains(">") -> {
+                    val (L, R) = t.split(">")
+                    val (n, r) = L.split("@")
+                    val coords = r.split(",").map { it.trim().toIntOrNull() ?: 0 }
+                    if (coords.size == 4) {
+                        val (x, y, w, h) = coords
+                        dims.put(n, JSONObject().apply {
+                            put("x", x); put("y", y); put("width", w); put("height", h)
+                        })
+                        pos.put(n, R)
+                    }
+                }
+            }
+        }
+        out.put("sw", sw)
+        out.put("sh", sh)
+        out.put("pos", pos)
+        out.put("dims", dims)
+        return out
+    }
 
 	private fun unscrambleImage(bitmap: Bitmap, drm: String, key: String): Bitmap {
 		val decrypted = xorDecryptHexWithKey(drm, key)
