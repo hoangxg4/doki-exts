@@ -164,8 +164,16 @@ private class MimiHentaiImageServer(port: Int) : NanoHTTPD(port) {
                 t.startsWith("sw:") -> sw = t.substring(3).toIntOrNull() ?: 0
                 t.startsWith("sh:") -> sh = t.substring(3).toIntOrNull() ?: 0
                 t.contains("@") && t.contains(">") -> {
-                    val (L, R) = t.split(">")
-                    val (n, r) = L.split("@")
+                    val parts1 = t.split(">")
+                    if (parts1.size < 2) continue
+
+                    val (L, R) = parts1
+                    
+                    val parts2 = L.split("@")
+                    if (parts2.size < 2) continue
+                    
+                    val (n, r) = parts2
+                    
                     val coords = r.split(",").map { it.trim().toIntOrNull() ?: 0 }
                     if (coords.size == 4) {
                         val (x, y, w, h) = coords
