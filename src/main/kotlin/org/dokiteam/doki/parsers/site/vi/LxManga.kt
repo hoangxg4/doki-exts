@@ -1,5 +1,6 @@
 package org.dokiteam.doki.parsers.site.vi
 
+import okhttp3.Headers
 import okhttp3.Headers.Companion.toHeaders
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
@@ -14,6 +15,11 @@ import java.util.*
 internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.LXMANGA, 60) {
 
 	override val configKeyDomain = ConfigKey.Domain("lxmanga.my")
+
+    // THÊM MỚI: Cung cấp header cho các request tải ảnh
+    override fun getRequestHeaders(): Headers = Headers.Builder()
+        .add("Referer", "https://$domain/")
+        .build()
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
@@ -121,7 +127,6 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 			}
 		}
 
-        // SỬA LỖI: Chuyển Map thành Headers và dùng đúng tên tham số 'extraHeaders'
 		val headers = mapOf("Referer" to baseUrl).toHeaders()
 		val doc = webClient.httpGet(url, extraHeaders = headers).parseHtml()
 
@@ -151,7 +156,6 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 
 	override suspend fun getDetails(manga: Manga): Manga {
 		val fullUrl = manga.url.toAbsoluteUrl(domain)
-        // SỬA LỖI: Chuyển Map thành Headers và dùng đúng tên tham số 'extraHeaders'
 		val headers = mapOf("Referer" to fullUrl).toHeaders()
 		val root = webClient.httpGet(fullUrl, extraHeaders = headers).parseHtml()
 
@@ -203,7 +207,6 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
 		val fullUrl = chapter.url.toAbsoluteUrl(domain)
-        // SỬA LỖI: Chuyển Map thành Headers và dùng đúng tên tham số 'extraHeaders'
 		val headers = mapOf("Referer" to fullUrl).toHeaders()
 		val doc = webClient.httpGet(fullUrl, extraHeaders = headers).parseHtml()
 
@@ -227,7 +230,6 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 
 	private suspend fun availableTags(): Set<MangaTag> {
 		val url = "https://$domain/the-loai"
-        // SỬA LỖI: Chuyển Map thành Headers và dùng đúng tên tham số 'extraHeaders'
 		val headers = mapOf("Referer" to "https://$domain/").toHeaders()
 		val doc = webClient.httpGet(url, extraHeaders = headers).parseHtml()
 
