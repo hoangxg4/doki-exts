@@ -12,14 +12,18 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 @MangaSourceParser("LXMANGA", "LXManga", "vi", type = ContentType.HENTAI)
-internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.LXMANGA, 60) {
+internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, MangaSourceParser.LXMANGA, 60) {
 
 	override val configKeyDomain = ConfigKey.Domain("lxmanga.my")
 
-    // THÊM MỚI: Cung cấp header cho các request tải ảnh
-    override fun getRequestHeaders(): Headers = Headers.Builder()
-        .add("Referer", "https://$domain/")
-        .build()
+	/**
+	 * Cung cấp header mặc định cho TẤT CẢ các request do parser này thực hiện.
+	 * Bao gồm cả request lấy HTML và request tải ảnh.
+	 */
+	override fun getRequestHeaders(): Headers = Headers.Builder()
+		.add("Referer", "https://$domain/")
+		.add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36")
+		.build()
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
@@ -44,121 +48,115 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 		availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED, MangaState.PAUSED),
 	)
 
-	// ... (Các hàm khác giữ nguyên)
+	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
+		val baseUrl = "https://$domain"
+		val url = buildString {
+			append(baseUrl)
+			when {
+				!filter.query.isNullOrEmpty() -> {
+					append("/tim-kiem")
+					append("?filter[name]=")
+					append(filter.query.urlEncoded())
+					if (page > 1) {
+						append("&page=")
+						append(page)
+					}
+					append("&sort=")
+					append(
+						when (order) {
+							SortOrder.POPULARITY -> "-views"
+							SortOrder.UPDATED -> "-updated_at"
+							SortOrder.NEWEST -> "-created_at"
+							SortOrder.ALPHABETICAL -> "name"
+							SortOrder.ALPHABETICAL_DESC -> "-name"
+							else -> "-updated_at"
+						},
+					)
+				}
+				filter.tags.isNotEmpty() -> {
+					val tag = filter.tags.first()
+					append("/the-loai/")
+					append(tag.key)
+					append("?page=")
+					append(page)
+				}
+				else -> {
+					append("/danh-sach")
+					append("?sort=")
+					append(
+						when (order) {
+							SortOrder.POPULARITY -> "-views"
+							SortOrder.UPDATED -> "-updated_at"
+							SortOrder.NEWEST -> "-created_at"
+							SortOrder.ALPHABETICAL -> "name"
+							SortOrder.ALPHABETICAL_DESC -> "-name"
+							else -> "-updated_at"
+						},
+					)
+					append("&page=")
+					append(page)
+				}
+			}
+			if (filter.query.isNullOrEmpty()) {
+				append("&sort=")
+				when (order) {
+					SortOrder.POPULARITY -> append("-views")
+					SortOrder.UPDATED -> append("-updated_at")
+					SortOrder.NEWEST -> append("-created_at")
+					SortOrder.ALPHABETICAL -> append("name")
+					SortOrder.ALPHABETICAL_DESC -> append("-name")
+					else -> append("-updated_at")
+				}
+			}
+			if (filter.states.isNotEmpty()) {
+				append("&filter[status]=")
+				filter.states.forEach {
+					append(
+						when (it) {
+							MangaState.ONGOING -> "ongoing,"
+							MangaState.FINISHED -> "completed,"
+							MangaState.PAUSED -> "paused,"
+							else -> "ongoing,completed,paused"
+						},
+					)
+				}
+			}
+		}
 
-override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
-    val baseUrl = "https://$domain"
-    val url = buildString {
-        // Logic xây dựng URL không thay đổi
-        append(baseUrl)
-        when {
-            !filter.query.isNullOrEmpty() -> {
-                append("/tim-kiem")
-                append("?filter[name]=")
-                append(filter.query.urlEncoded())
-                if (page > 1) {
-                    append("&page=")
-                    append(page)
-                }
-                append("&sort=")
-                append(
-                    when (order) {
-                        SortOrder.POPULARITY -> "-views"
-                        SortOrder.UPDATED -> "-updated_at"
-                        SortOrder.NEWEST -> "-created_at"
-                        SortOrder.ALPHABETICAL -> "name"
-                        SortOrder.ALPHABETICAL_DESC -> "-name"
-                        else -> "-updated_at"
-                    },
-                )
-            }
-            filter.tags.isNotEmpty() -> {
-                val tag = filter.tags.first()
-                append("/the-loai/")
-                append(tag.key)
-                append("?page=")
-                append(page)
-            }
-            else -> {
-                append("/danh-sach")
-                append("?sort=")
-                append(
-                    when (order) {
-                        SortOrder.POPULARITY -> "-views"
-                        SortOrder.UPDATED -> "-updated_at"
-                        SortOrder.NEWEST -> "-created_at"
-                        SortOrder.ALPHABETICAL -> "name"
-                        SortOrder.ALPHABETICAL_DESC -> "-name"
-                        else -> "-updated_at"
-                    },
-                )
-                append("&page=")
-                append(page)
-            }
-        }
-        if (filter.query.isNullOrEmpty()) {
-            append("&sort=")
-            when (order) {
-                SortOrder.POPULARITY -> append("-views")
-                SortOrder.UPDATED -> append("-updated_at")
-                SortOrder.NEWEST -> append("-created_at")
-                SortOrder.ALPHABETICAL -> append("name")
-                SortOrder.ALPHABETICAL_DESC -> append("-name")
-                else -> append("-updated_at")
-            }
-        }
-        if (filter.states.isNotEmpty()) {
-            append("&filter[status]=")
-            filter.states.forEach {
-                append(
-                    when (it) {
-                        MangaState.ONGOING -> "ongoing,"
-                        MangaState.FINISHED -> "completed,"
-                        MangaState.PAUSED -> "paused,"
-                        else -> "ongoing,completed,paused"
-                    },
-                )
-            }
-        }
-    }
+		// Đã xóa header riêng lẻ, request sẽ tự động dùng header từ getRequestHeaders()
+		val doc = webClient.httpGet(url).parseHtml()
 
-    // Dùng httpGet thông thường vì trang không tải động nội dung này
-    val headers = mapOf("Referer" to baseUrl).toHeaders()
-    val doc = webClient.httpGet(url, extraHeaders = headers).parseHtml()
+		return doc.select("div.manga-vertical").map { item ->
+			val titleElement = item.selectFirst("div.p-2 a.text-ellipsis")
+				?: item.parseFailed("Không tìm thấy tiêu đề hoặc link manga!")
 
-    // CẬP NHẬT: Sử dụng selector đã phân tích từ file index.html
-    return doc.select("div.manga-vertical").map { item ->
-        val titleElement = item.selectFirst("div.p-2 a.text-ellipsis")
-            ?: item.parseFailed("Không tìm thấy tiêu đề hoặc link manga!")
+			val href = titleElement.attr("href")
+			val title = titleElement.text()
 
-        val href = titleElement.attr("href")
-        val title = titleElement.text()
+			val coverUrl = item.selectFirst("div.cover")?.attr("data-bg").orEmpty()
 
-        val coverUrl = item.selectFirst("div.cover")?.attr("data-bg").orEmpty()
-
-        Manga(
-            id = generateUid(href),
-            title = title,
-            altTitles = emptySet(),
-            url = href,
-            publicUrl = href.toAbsoluteUrl(domain),
-            rating = RATING_UNKNOWN,
-            contentRating = ContentRating.ADULT,
-            coverUrl = coverUrl,
-            tags = setOf(),
-            state = null,
-            authors = emptySet(),
-            source = source,
-        )
-    }
-}
-
-// ... (Các hàm khác giữ nguyên)
+			Manga(
+				id = generateUid(href),
+				title = title,
+				altTitles = emptySet(),
+				url = href,
+				publicUrl = href.toAbsoluteUrl(domain),
+				rating = RATING_UNKNOWN,
+				contentRating = ContentRating.ADULT,
+				coverUrl = coverUrl,
+				tags = setOf(),
+				state = null,
+				authors = emptySet(),
+				source = source,
+			)
+		}
+	}
 
 	override suspend fun getDetails(manga: Manga): Manga {
 		val fullUrl = manga.url.toAbsoluteUrl(domain)
-		val headers = mapOf("Referer" to fullUrl).toHeaders()
-		val root = webClient.httpGet(fullUrl, extraHeaders = headers).parseHtml()
+		
+		// Đã xóa header riêng lẻ
+		val root = webClient.httpGet(fullUrl).parseHtml()
 
 		val chapterDateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", Locale.ROOT).apply {
 			timeZone = TimeZone.getTimeZone("GMT+7")
@@ -208,7 +206,9 @@ override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListF
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
 		val fullUrl = chapter.url.toAbsoluteUrl(domain)
-		val doc = webClient.httpGet(fullUrl, extraHeaders = headers).parseHtml()
+		
+		// Đã xóa header riêng lẻ
+		val doc = webClient.httpGet(fullUrl).parseHtml()
 
 		return doc.select("div.text-center div.lazy")
 			.mapNotNull { div ->
@@ -230,8 +230,9 @@ override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListF
 
 	private suspend fun availableTags(): Set<MangaTag> {
 		val url = "https://$domain/the-loai"
-		val headers = mapOf("Referer" to "https://$domain/").toHeaders()
-		val doc = webClient.httpGet(url, extraHeaders = headers).parseHtml()
+		
+		// Đã xóa header riêng lẻ
+		val doc = webClient.httpGet(url).parseHtml()
 
 		return doc.select("nav.grid.grid-cols-3.md\\:grid-cols-8 button").map { button ->
 			val key = button.attr("wire:click").substringAfterLast(", '").substringBeforeLast("')")
