@@ -18,8 +18,10 @@ internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context,
 
 	companion object {
 		private const val REQUEST_DELAY_MS = 1500L
+		private const val SEARCH_RESULT_LIMIT = 24
 	}
 
+	// Mutex và biến lastRequestTime này sẽ được dùng chung cho cả getListPage và getDetails
 	private val requestMutex = Mutex()
 	private var lastRequestTime = 0L
 
@@ -148,30 +150,43 @@ internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context,
 
 		val doc = webClient.httpGet(url).parseHtml()
 
-		return doc.select("div.grid div.relative").map { div ->
-			val href = div.selectFirst("a[href^=/truyen/]")?.attrOrNull("href")
-				?: div.parseFailed("Không thể tìm thấy nguồn ảnh của Manga này!")
-			val coverUrl = div.selectFirst("div.cover")?.attr("style")
-				?.substringAfter("url('")?.substringBefore("')")
+		return doc.select("div.grid div.relative")
+			.take(SEARCH_RESULT_LIMIT)
+			.map { div ->
+				val href = div.selectFirst("a[href^=/truyen/]")?.attrOrNull("href")
+					?: div.parseFailed("Không thể tìm thấy nguồn ảnh của Manga này!")
+				val coverUrl = div.selectFirst("div.cover")?.attr("style")
+					?.substringAfter("url('")?.substringBefore("')")
 
-			Manga(
-				id = generateUid(href),
-				title = div.select("div.p-2 a.text-ellipsis").text(),
-				altTitles = emptySet(),
-				url = href,
-				publicUrl = href.toAbsoluteUrl(domain),
-				rating = RATING_UNKNOWN,
-				contentRating = ContentRating.ADULT,
-				coverUrl = coverUrl.orEmpty(),
-				tags = setOf(),
-				state = null,
-				authors = emptySet(),
-				source = source,
-			)
-		}
+				Manga(
+					id = generateUid(href),
+					title = div.select("div.p-2 a.text-ellipsis").text(),
+					altTitles = emptySet(),
+					url = href,
+					publicUrl = href.toAbsoluteUrl(domain),
+					rating = RATING_UNKNOWN,
+					contentRating = ContentRating.ADULT,
+					coverUrl = coverUrl.orEmpty(),
+					tags = setOf(),
+					state = null,
+					authors = emptySet(),
+					source = source,
+				)
+			}
 	}
 
+	// --- CẬP NHẬT HÀM getDetails TẠI ĐÂY ---
 	override suspend fun getDetails(manga: Manga): Manga {
+		// Thêm logic rate limiting vào đầu hàm
+		requestMutex.withLock {
+			val currentTime = System.currentTimeMillis()
+			val timeSinceLastRequest = currentTime - lastRequestTime
+			if (timeSinceLastRequest < REQUEST_DELAY_MS) {
+				delay(REQUEST_DELAY_MS - timeSinceLastRequest)
+			}
+			lastRequestTime = System.currentTimeMillis()
+		}
+
 		val root = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
 		val author = root.selectFirst("div.mt-2:contains(Tác giả) span a")?.textOrNull()
 
@@ -212,13 +227,12 @@ internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context,
 				},
 		)
 	}
+	// --- KẾT THÚC CẬP NHẬT ---
 
-	// --- CẬP NHẬT HÀM getPages TẠI ĐÂY ---
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
 		val fullUrl = chapter.url.toAbsoluteUrl(domain)
 		val doc = webClient.httpGet(fullUrl).parseHtml()
 
-		// Sử dụng selector mới để lấy đúng các thẻ img chứa ảnh truyện
 		return doc.select("div.text-center img.max-w-full").mapNotNull { img ->
 			val url = img.attrOrNull("src") ?: return@mapNotNull null
 			MangaPage(
@@ -229,7 +243,6 @@ internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context,
 			)
 		}
 	}
-	// --- KẾT THÚC CẬP NHẬT ---
 
 	private suspend fun availableTags(): Set<MangaTag> {
 		val doc = webClient.httpGet("https://$domain/tim-kiem").parseHtml()
