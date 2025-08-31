@@ -1,7 +1,6 @@
 package org.dokiteam.doki.parsers.site.vi
 
 import okhttp3.Headers
-import okhttp3.Headers.Companion.toHeaders
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
@@ -16,10 +15,6 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 
 	override val configKeyDomain = ConfigKey.Domain("lxmanga.my")
 
-	/**
-	 * Cung cấp header mặc định cho TẤT CẢ các request do parser này thực hiện.
-	 * Bao gồm cả request lấy HTML và request tải ảnh.
-	 */
 	override fun getRequestHeaders(): Headers = Headers.Builder()
 		.add("Referer", "https://$domain/")
 		.add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36")
@@ -48,7 +43,6 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 		availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED, MangaState.PAUSED),
 	)
 
-	// Giữ nguyên hàm getListPage của bạn
 	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val baseUrl = "https://$domain"
 		val url = buildString {
@@ -130,7 +124,7 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 
 	override suspend fun getDetails(manga: Manga): Manga {
 		val fullUrl = manga.url.toAbsoluteUrl(domain)
-		
+
 		val root = webClient.httpGet(fullUrl).parseHtml()
 
 		val chapterDateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", Locale.ROOT).apply {
@@ -179,51 +173,50 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 		)
 	}
 
-	// --------------------- PHẦN CHỈNH SỬA DUY NHẤT ---------------------
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
 		val fullUrl = chapter.url.toAbsoluteUrl(domain)
 		val doc = webClient.httpGet(fullUrl).parseHtml()
 
-		// Tạo header riêng cho việc tải ảnh, với Referer là URL của chapter
-		val imageHeaders = Headers.Builder()
-			.add("Referer", fullUrl)
-			.add("User-Agent", getRequestHeaders()["User-Agent"]!!) // Tái sử dụng User-Agent chung
-			.build()
+		// Helper function để escape chuỗi JSON một cách an toàn
+		fun String.escapeJson(): String = this.replace("\\", "\\\\").replace("\"", "\\\"")
+
+		val referer = fullUrl.escapeJson()
+		val userAgent = getRequestHeaders()["User-Agent"]!!.escapeJson()
+		
+		// Tạo chuỗi JSON chứa headers
+		val headersJson = """{"Referer":"$referer","User-Agent":"$userAgent"}"""
 
 		return doc.select("div.text-center div.lazy")
 			.mapNotNull { div ->
 				val url = div.attr("data-src")
 				if (url.isNotBlank() && (url.endsWith(".jpg", ignoreCase = true) ||
-					url.endsWith(".png", ignoreCase = true) ||
-                    url.endsWith(".webp", ignoreCase = true)) // Thêm webp cho chắc
+						url.endsWith(".png", ignoreCase = true) ||
+						url.endsWith(".webp", ignoreCase = true))
 				) {
+					// Nối chuỗi JSON header vào cuối URL gốc
+					val urlWithHeaders = "$url#Doki-Headers=$headersJson"
+
 					MangaPage(
 						id = generateUid(url),
-						url = url,
+						url = urlWithHeaders, // Sử dụng URL đã chứa header
 						preview = null,
 						source = source,
-						headers = imageHeaders // **QUAN TRỌNG**: Gán header vào từng page
 					)
 				} else {
-					// Trang này không phải là ảnh, có thể là quảng cáo hoặc thông báo
-					// Trả về null để mapNotNull loại bỏ nó
 					null
 				}
 			}
-			.ifEmpty { 
-                // Xử lý trường hợp không tìm thấy ảnh nào, có thể trang yêu cầu LXCoin
-                if (doc.body().text().contains("LXCoin", ignoreCase = true)) {
-                    throw Exception("Bạn cần phải nạp LXCoin mua code VIP để xem nội dung này trên trang Web!")
-                }
-                emptyList()
-            }
+			.ifEmpty {
+				if (doc.body().text().contains("LXCoin", ignoreCase = true)) {
+					throw Exception("Bạn cần phải nạp LXCoin mua code VIP để xem nội dung này trên trang Web!")
+				}
+				emptyList()
+			}
 	}
-	// --------------------------------------------------------------------
-
 
 	private suspend fun availableTags(): Set<MangaTag> {
 		val url = "https://$domain/the-loai"
-		
+
 		val doc = webClient.httpGet(url).parseHtml()
 
 		return doc.select("nav.grid.grid-cols-3.md\\:grid-cols-8 button").map { button ->
