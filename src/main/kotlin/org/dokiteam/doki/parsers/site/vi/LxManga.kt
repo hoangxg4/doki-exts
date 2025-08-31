@@ -13,15 +13,16 @@ import java.util.*
 import kotlin.text.Regex
 
 @MangaSourceParser("LXMANGA", "LXManga", "vi", type = ContentType.HENTAI)
-// --------------------- SỬA LỖI Ở DÒNG NÀY ---------------------
 internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.LXMANGA, 60) {
-// -----------------------------------------------------------------
+
 	override val configKeyDomain = ConfigKey.Domain("lxmanga.my")
 
 	override fun getRequestHeaders(): Headers = Headers.Builder()
 		.add("Referer", "https://$domain/")
 		.add("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36")
 		.build()
+	
+	// ... các hàm khác giữ nguyên như cũ ...
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
@@ -95,6 +96,10 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 			}
 		}
 		val doc = webClient.httpGet(url).parseHtml()
+		// Kiểm tra Cloudflare ngay tại đây
+		if ("Just a moment..." in doc.title()) {
+			throw ParseException("Trang web yêu cầu xác minh Cloudflare. Vui lòng mở trong WebView và hoàn thành CAPTCHA.", true)
+		}
 		return doc.select("div.manga-vertical").map { item ->
 			val titleElement = item.selectFirst("div.p-2 a.text-ellipsis")
 				?: item.parseFailed("Không tìm thấy tiêu đề hoặc link manga!")
@@ -120,6 +125,10 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 	override suspend fun getDetails(manga: Manga): Manga {
 		val fullUrl = manga.url.toAbsoluteUrl(domain)
 		val root = webClient.httpGet(fullUrl).parseHtml()
+		// Kiểm tra Cloudflare
+		if ("Just a moment..." in root.title()) {
+			throw ParseException("Trang web yêu cầu xác minh Cloudflare. Vui lòng mở trong WebView và hoàn thành CAPTCHA.", true)
+		}
 		val chapterDateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", Locale.ROOT).apply {
 			timeZone = TimeZone.getTimeZone("GMT+7")
 		}
@@ -169,25 +178,35 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 		val response = webClient.httpGet(fullUrl)
 		val doc = response.parseHtml()
 
-		// 1. Trích xuất CSRF Token từ HTML của trang chapter
+		// **QUAN TRỌNG**: Kiểm tra xem trang có yêu cầu xác minh Cloudflare hay không
+		if ("Just a moment..." in doc.title() || "challenges.cloudflare.com" in doc.html()) {
+			// Ném ra một Exception đặc biệt, app Doki sẽ bắt được và mở WebView
+			throw ParseException("Trang web yêu cầu xác minh Cloudflare. Vui lòng mở trong WebView và hoàn thành CAPTCHA.", true)
+		}
+
+		val tokenUrl = "https://$domain/get_token"
+
+		// Thử lấy token, nếu response trả về is_bot, cũng yêu cầu WebView
+		val tokenCheckResponse = webClient.httpGet(tokenUrl).body!!.string()
+		if ("is_bot\":true" in tokenCheckResponse) {
+			throw ParseException("Server xác định bạn là bot. Vui lòng mở trong WebView để xác minh.", true)
+		}
+		
 		val csrfToken = doc.selectFirst("meta[name=action_token]")?.attr("content")
 			?: throw Exception("Không tìm thấy CSRF Token (action_token).")
 
-		// 2. Build header để gửi request lấy action_token
 		val tokenHeaders = Headers.Builder()
 			.add("X-CSRF-TOKEN", csrfToken)
 			.add("Referer", fullUrl)
-			.add("X-Requested-With", "XMLHttpRequest") // Giả lập request từ JS
+			.add("X-Requested-With", "XMLHttpRequest")
 			.build()
-
-		// 3. Lấy action_token bằng cách gửi request với header đã chuẩn bị
-		val tokenUrl = "https://$domain/get_token"
+		
 		val tokenResponse = webClient.httpGet(tokenUrl, tokenHeaders).body!!.string()
+
 		val actionToken = Regex("\"action_token\"\\s*:\\s*\"([^\"]+)\"")
 			.find(tokenResponse)?.groupValues?.get(1)
 			?: throw Exception("Không thể parse action_token từ response: $tokenResponse")
 
-		// 4. Lấy cookie từ response của trang chapter
 		val setCookieHeaders = response.headers.values("Set-Cookie")
 		val cookieHeader = setCookieHeaders
 			.mapNotNull { it.substringBefore(';').trim() }
@@ -195,11 +214,10 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 
 		fun String.escapeJson(): String = this.replace("\\", "\\\\").replace("\"", "\\\"")
 
-		// 5. Build map chứa tất cả các header cho request ảnh
 		val headersMap = mutableMapOf<String, String>()
 		headersMap["Referer"] = fullUrl
 		headersMap["User-Agent"] = getRequestHeaders()["User-Agent"]!!
-		headersMap["Token"] = actionToken // Header quan trọng nhất
+		headersMap["Token"] = actionToken
 
 		if (cookieHeader.isNotBlank()) {
 			headersMap["Cookie"] = cookieHeader
@@ -209,7 +227,6 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 			"\"${key.escapeJson()}\":\"${value.escapeJson()}\""
 		}
 
-		// 6. Lấy URL ảnh và gán header đã chuẩn bị
 		return doc.select("div.text-center div.lazy")
 			.mapNotNull { div ->
 				val url = div.attr("data-src")
@@ -229,14 +246,15 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 				if (doc.body().text().contains("LXCoin", ignoreCase = true)) {
 					throw Exception("Bạn cần phải nạp LXCoin mua code VIP để xem nội dung này trên trang Web!")
 				}
-				emptyList()
+				// Nếu không có ảnh VÀ không có lỗi LXCoin, có thể là trang xác minh JS
+				// mà ta chưa nhận diện được, yêu cầu WebView là an toàn nhất.
+				throw ParseException("Không tìm thấy ảnh. Trang có thể yêu cầu xác minh JS. Vui lòng thử lại hoặc mở bằng WebView.", true)
 			}
 	}
 
 	private suspend fun availableTags(): Set<MangaTag> {
 		val url = "https://$domain/the-loai"
 		val doc = webClient.httpGet(url).parseHtml()
-
 		return doc.select("nav.grid.grid-cols-3.md\\:grid-cols-8 button").map { button ->
 			val key = button.attr("wire:click").substringAfterLast(", '").substringBeforeLast("')")
 			MangaTag(
