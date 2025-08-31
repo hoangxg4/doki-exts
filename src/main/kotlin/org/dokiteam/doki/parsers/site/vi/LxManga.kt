@@ -13,8 +13,9 @@ import java.util.*
 import kotlin.text.Regex
 
 @MangaSourceParser("LXMANGA", "LXManga", "vi", type = ContentType.HENTAI)
-internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, MangaSourceSource.LXMANGA, 60) {
-
+// --------------------- SỬA LỖI Ở DÒNG NÀY ---------------------
+internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.LXMANGA, 60) {
+// -----------------------------------------------------------------
 	override val configKeyDomain = ConfigKey.Domain("lxmanga.my")
 
 	override fun getRequestHeaders(): Headers = Headers.Builder()
@@ -45,7 +46,6 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 		availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED, MangaState.PAUSED),
 	)
 
-	// Các hàm getListPage, getDetails, availableTags giữ nguyên
 	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val baseUrl = "https://$domain"
 		val url = buildString {
