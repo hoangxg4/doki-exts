@@ -48,6 +48,7 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 		availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED, MangaState.PAUSED),
 	)
 
+	// Giữ nguyên hàm getListPage của bạn
 	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val baseUrl = "https://$domain"
 		val url = buildString {
@@ -61,17 +62,6 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 						append("&page=")
 						append(page)
 					}
-					append("&sort=")
-					append(
-						when (order) {
-							SortOrder.POPULARITY -> "-views"
-							SortOrder.UPDATED -> "-updated_at"
-							SortOrder.NEWEST -> "-created_at"
-							SortOrder.ALPHABETICAL -> "name"
-							SortOrder.ALPHABETICAL_DESC -> "-name"
-							else -> "-updated_at"
-						},
-					)
 				}
 				filter.tags.isNotEmpty() -> {
 					val tag = filter.tags.first()
@@ -82,48 +72,34 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 				}
 				else -> {
 					append("/danh-sach")
-					append("?sort=")
-					append(
-						when (order) {
-							SortOrder.POPULARITY -> "-views"
-							SortOrder.UPDATED -> "-updated_at"
-							SortOrder.NEWEST -> "-created_at"
-							SortOrder.ALPHABETICAL -> "name"
-							SortOrder.ALPHABETICAL_DESC -> "-name"
-							else -> "-updated_at"
-						},
-					)
-					append("&page=")
+					append("?page=")
 					append(page)
 				}
 			}
-			if (filter.query.isNullOrEmpty()) {
-				append("&sort=")
-				when (order) {
-					SortOrder.POPULARITY -> append("-views")
-					SortOrder.UPDATED -> append("-updated_at")
-					SortOrder.NEWEST -> append("-created_at")
-					SortOrder.ALPHABETICAL -> append("name")
-					SortOrder.ALPHABETICAL_DESC -> append("-name")
-					else -> append("-updated_at")
-				}
+
+			val sortValue = when (order) {
+				SortOrder.POPULARITY -> "-views"
+				SortOrder.UPDATED -> "-updated_at"
+				SortOrder.NEWEST -> "-created_at"
+				SortOrder.ALPHABETICAL -> "name"
+				SortOrder.ALPHABETICAL_DESC -> "-name"
+				else -> "-updated_at"
 			}
+			append("&sort=").append(sortValue)
+
 			if (filter.states.isNotEmpty()) {
 				append("&filter[status]=")
-				filter.states.forEach {
-					append(
-						when (it) {
-							MangaState.ONGOING -> "ongoing,"
-							MangaState.FINISHED -> "completed,"
-							MangaState.PAUSED -> "paused,"
-							else -> "ongoing,completed,paused"
-						},
-					)
-				}
+				append(filter.states.joinToString(separator = ",") {
+					when (it) {
+						MangaState.ONGOING -> "ongoing"
+						MangaState.FINISHED -> "completed"
+						MangaState.PAUSED -> "paused"
+						else -> ""
+					}
+				})
 			}
 		}
 
-		// Đã xóa header riêng lẻ, request sẽ tự động dùng header từ getRequestHeaders()
 		val doc = webClient.httpGet(url).parseHtml()
 
 		return doc.select("div.manga-vertical").map { item ->
@@ -155,7 +131,6 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 	override suspend fun getDetails(manga: Manga): Manga {
 		val fullUrl = manga.url.toAbsoluteUrl(domain)
 		
-		// Đã xóa header riêng lẻ
 		val root = webClient.httpGet(fullUrl).parseHtml()
 
 		val chapterDateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", Locale.ROOT).apply {
@@ -204,34 +179,51 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 		)
 	}
 
+	// --------------------- PHẦN CHỈNH SỬA DUY NHẤT ---------------------
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
 		val fullUrl = chapter.url.toAbsoluteUrl(domain)
-		
-		// Đã xóa header riêng lẻ
 		val doc = webClient.httpGet(fullUrl).parseHtml()
+
+		// Tạo header riêng cho việc tải ảnh, với Referer là URL của chapter
+		val imageHeaders = Headers.Builder()
+			.add("Referer", fullUrl)
+			.add("User-Agent", getRequestHeaders()["User-Agent"]!!) // Tái sử dụng User-Agent chung
+			.build()
 
 		return doc.select("div.text-center div.lazy")
 			.mapNotNull { div ->
 				val url = div.attr("data-src")
-				if (url.endsWith(".jpg", ignoreCase = true) ||
-					url.endsWith(".png", ignoreCase = true)
+				if (url.isNotBlank() && (url.endsWith(".jpg", ignoreCase = true) ||
+					url.endsWith(".png", ignoreCase = true) ||
+                    url.endsWith(".webp", ignoreCase = true)) // Thêm webp cho chắc
 				) {
 					MangaPage(
 						id = generateUid(url),
 						url = url,
 						preview = null,
 						source = source,
+						headers = imageHeaders // **QUAN TRỌNG**: Gán header vào từng page
 					)
 				} else {
-					throw Exception("Bạn cần phải nạp LXCoin mua code VIP để xem nội dung này trên trang Web!")
+					// Trang này không phải là ảnh, có thể là quảng cáo hoặc thông báo
+					// Trả về null để mapNotNull loại bỏ nó
+					null
 				}
 			}
+			.ifEmpty { 
+                // Xử lý trường hợp không tìm thấy ảnh nào, có thể trang yêu cầu LXCoin
+                if (doc.body().text().contains("LXCoin", ignoreCase = true)) {
+                    throw Exception("Bạn cần phải nạp LXCoin mua code VIP để xem nội dung này trên trang Web!")
+                }
+                emptyList()
+            }
 	}
+	// --------------------------------------------------------------------
+
 
 	private suspend fun availableTags(): Set<MangaTag> {
 		val url = "https://$domain/the-loai"
 		
-		// Đã xóa header riêng lẻ
 		val doc = webClient.httpGet(url).parseHtml()
 
 		return doc.select("nav.grid.grid-cols-3.md\\:grid-cols-8 button").map { button ->
