@@ -10,15 +10,16 @@ import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.text.Regex
 
 @MangaSourceParser("LXMANGA", "LXManga", "vi", type = ContentType.HENTAI)
-internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.LXMANGA, 60) {
+internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, MangaSourceSource.LXMANGA, 60) {
 
 	override val configKeyDomain = ConfigKey.Domain("lxmanga.my")
 
 	override fun getRequestHeaders(): Headers = Headers.Builder()
 		.add("Referer", "https://$domain/")
-		.add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36")
+		.add("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36")
 		.build()
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
@@ -44,6 +45,7 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 		availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED, MangaState.PAUSED),
 	)
 
+	// Các hàm getListPage, getDetails, availableTags giữ nguyên
 	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val baseUrl = "https://$domain"
 		val url = buildString {
@@ -71,7 +73,6 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 					append(page)
 				}
 			}
-
 			val sortValue = when (order) {
 				SortOrder.POPULARITY -> "-views"
 				SortOrder.UPDATED -> "-updated_at"
@@ -81,7 +82,6 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 				else -> "-updated_at"
 			}
 			append("&sort=").append(sortValue)
-
 			if (filter.states.isNotEmpty()) {
 				append("&filter[status]=")
 				append(filter.states.joinToString(separator = ",") {
@@ -94,18 +94,13 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 				})
 			}
 		}
-
 		val doc = webClient.httpGet(url).parseHtml()
-
 		return doc.select("div.manga-vertical").map { item ->
 			val titleElement = item.selectFirst("div.p-2 a.text-ellipsis")
 				?: item.parseFailed("Không tìm thấy tiêu đề hoặc link manga!")
-
 			val href = titleElement.attr("href")
 			val title = titleElement.text()
-
 			val coverUrl = item.selectFirst("div.cover")?.attr("data-bg").orEmpty()
-
 			Manga(
 				id = generateUid(href),
 				title = title,
@@ -122,12 +117,9 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 			)
 		}
 	}
-
 	override suspend fun getDetails(manga: Manga): Manga {
 		val fullUrl = manga.url.toAbsoluteUrl(domain)
-
 		val root = webClient.httpGet(fullUrl).parseHtml()
-
 		val chapterDateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", Locale.ROOT).apply {
 			timeZone = TimeZone.getTimeZone("GMT+7")
 		}
@@ -135,7 +127,6 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 		val altTitles = root.selectFirst("div.grow div:contains(Tên khác)")
 			?.select("span a")?.mapToSet { it.text() }
 			?: emptySet()
-
 		return manga.copy(
 			altTitles = altTitles,
 			state = when (root.selectFirst("div.mt-2:contains(Tình trạng) span.text-blue-500")?.text()) {
@@ -158,7 +149,6 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 					val name = a.selectFirst("span.text-ellipsis")?.text().orEmpty()
 					val dateText = a.parent()?.selectFirst("span.timeago")?.attr("datetime").orEmpty()
 					val scanlator = root.selectFirst("div.mt-2:has(span:first-child:contains(Thực hiện:)) span:last-child")?.textOrNull()
-
 					MangaChapter(
 						id = generateUid(href),
 						title = name,
@@ -176,44 +166,54 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
 		val fullUrl = chapter.url.toAbsoluteUrl(domain)
-
-		// 1. Gửi request và giữ lại đối tượng response để đọc header
 		val response = webClient.httpGet(fullUrl)
 		val doc = response.parseHtml()
 
-		// 2. Lấy tất cả header "Set-Cookie" mà server trả về
+		// 1. Trích xuất CSRF Token từ HTML của trang chapter
+		val csrfToken = doc.selectFirst("meta[name=action_token]")?.attr("content")
+			?: throw Exception("Không tìm thấy CSRF Token (action_token).")
+
+		// 2. Build header để gửi request lấy action_token
+		val tokenHeaders = Headers.Builder()
+			.add("X-CSRF-TOKEN", csrfToken)
+			.add("Referer", fullUrl)
+			.add("X-Requested-With", "XMLHttpRequest") // Giả lập request từ JS
+			.build()
+
+		// 3. Lấy action_token bằng cách gửi request với header đã chuẩn bị
+		val tokenUrl = "https://$domain/get_token"
+		val tokenResponse = webClient.httpGet(tokenUrl, tokenHeaders).body!!.string()
+		val actionToken = Regex("\"action_token\"\\s*:\\s*\"([^\"]+)\"")
+			.find(tokenResponse)?.groupValues?.get(1)
+			?: throw Exception("Không thể parse action_token từ response: $tokenResponse")
+
+		// 4. Lấy cookie từ response của trang chapter
 		val setCookieHeaders = response.headers.values("Set-Cookie")
-		
-		// 3. Chuyển đổi chúng thành một chuỗi header "Cookie" duy nhất
-		// bằng cách lấy phần "key=value" của mỗi cookie
 		val cookieHeader = setCookieHeaders
 			.mapNotNull { it.substringBefore(';').trim() }
 			.joinToString("; ")
 
-		// Helper function để escape chuỗi JSON an toàn.
 		fun String.escapeJson(): String = this.replace("\\", "\\\\").replace("\"", "\\\"")
 
-		// 4. Build map chứa các header cần thiết
+		// 5. Build map chứa tất cả các header cho request ảnh
 		val headersMap = mutableMapOf<String, String>()
 		headersMap["Referer"] = fullUrl
 		headersMap["User-Agent"] = getRequestHeaders()["User-Agent"]!!
+		headersMap["Token"] = actionToken // Header quan trọng nhất
 
 		if (cookieHeader.isNotBlank()) {
 			headersMap["Cookie"] = cookieHeader
 		}
 
-		// 5. Chuyển map header thành chuỗi JSON.
 		val headersJson = headersMap.entries.joinToString(prefix = "{", postfix = "}", separator = ",") { (key, value) ->
 			"\"${key.escapeJson()}\":\"${value.escapeJson()}\""
 		}
 
+		// 6. Lấy URL ảnh và gán header đã chuẩn bị
 		return doc.select("div.text-center div.lazy")
 			.mapNotNull { div ->
 				val url = div.attr("data-src")
-				if (url.isNotBlank() && (url.endsWith(".jpg", ignoreCase = true) ||
-						url.endsWith(".png", ignoreCase = true) ||
-						url.endsWith(".webp", ignoreCase = true))
-				) {
+				if (url.isNotBlank()) {
 					val urlWithHeaders = "$url#Doki-Headers=$headersJson"
 					MangaPage(
 						id = generateUid(url),
