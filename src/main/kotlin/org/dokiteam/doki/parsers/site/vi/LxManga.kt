@@ -21,8 +21,6 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 		.add("Referer", "https://$domain/")
 		.add("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36")
 		.build()
-	
-	// ... các hàm khác giữ nguyên như cũ ...
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
@@ -96,9 +94,8 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 			}
 		}
 		val doc = webClient.httpGet(url).parseHtml()
-		// Kiểm tra Cloudflare ngay tại đây
 		if ("Just a moment..." in doc.title()) {
-			throw ParseException("Trang web yêu cầu xác minh Cloudflare. Vui lòng mở trong WebView và hoàn thành CAPTCHA.", true)
+			throw Exception("Trang web yêu cầu xác minh Cloudflare. Vui lòng mở trong WebView và hoàn thành CAPTCHA.")
 		}
 		return doc.select("div.manga-vertical").map { item ->
 			val titleElement = item.selectFirst("div.p-2 a.text-ellipsis")
@@ -125,9 +122,8 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 	override suspend fun getDetails(manga: Manga): Manga {
 		val fullUrl = manga.url.toAbsoluteUrl(domain)
 		val root = webClient.httpGet(fullUrl).parseHtml()
-		// Kiểm tra Cloudflare
 		if ("Just a moment..." in root.title()) {
-			throw ParseException("Trang web yêu cầu xác minh Cloudflare. Vui lòng mở trong WebView và hoàn thành CAPTCHA.", true)
+			throw Exception("Trang web yêu cầu xác minh Cloudflare. Vui lòng mở trong WebView và hoàn thành CAPTCHA.")
 		}
 		val chapterDateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", Locale.ROOT).apply {
 			timeZone = TimeZone.getTimeZone("GMT+7")
@@ -178,18 +174,15 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 		val response = webClient.httpGet(fullUrl)
 		val doc = response.parseHtml()
 
-		// **QUAN TRỌNG**: Kiểm tra xem trang có yêu cầu xác minh Cloudflare hay không
 		if ("Just a moment..." in doc.title() || "challenges.cloudflare.com" in doc.html()) {
-			// Ném ra một Exception đặc biệt, app Doki sẽ bắt được và mở WebView
-			throw ParseException("Trang web yêu cầu xác minh Cloudflare. Vui lòng mở trong WebView và hoàn thành CAPTCHA.", true)
+			throw Exception("Trang web yêu cầu xác minh Cloudflare. Vui lòng mở trong WebView và hoàn thành CAPTCHA.")
 		}
 
 		val tokenUrl = "https://$domain/get_token"
 
-		// Thử lấy token, nếu response trả về is_bot, cũng yêu cầu WebView
 		val tokenCheckResponse = webClient.httpGet(tokenUrl).body!!.string()
 		if ("is_bot\":true" in tokenCheckResponse) {
-			throw ParseException("Server xác định bạn là bot. Vui lòng mở trong WebView để xác minh.", true)
+			throw Exception("Server xác định bạn là bot. Vui lòng mở trong WebView để xác minh.")
 		}
 		
 		val csrfToken = doc.selectFirst("meta[name=action_token]")?.attr("content")
@@ -246,9 +239,7 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 				if (doc.body().text().contains("LXCoin", ignoreCase = true)) {
 					throw Exception("Bạn cần phải nạp LXCoin mua code VIP để xem nội dung này trên trang Web!")
 				}
-				// Nếu không có ảnh VÀ không có lỗi LXCoin, có thể là trang xác minh JS
-				// mà ta chưa nhận diện được, yêu cầu WebView là an toàn nhất.
-				throw ParseException("Không tìm thấy ảnh. Trang có thể yêu cầu xác minh JS. Vui lòng thử lại hoặc mở bằng WebView.", true)
+				throw Exception("Không tìm thấy ảnh. Trang có thể yêu cầu xác minh JS. Vui lòng thử lại hoặc mở bằng WebView.")
 			}
 	}
 
