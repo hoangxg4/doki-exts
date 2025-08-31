@@ -1,6 +1,7 @@
 package org.dokiteam.doki.parsers.site.vi
 
 import okhttp3.Headers
+import okhttp3.HttpUrl.Companion.toHttpUrl // Thêm import này
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
@@ -175,16 +176,34 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
 		val fullUrl = chapter.url.toAbsoluteUrl(domain)
+
+		// 1. Truy cập trang chapter. Hành động này sẽ khiến webClient nhận và lưu cookie.
 		val doc = webClient.httpGet(fullUrl).parseHtml()
 
-		// Helper function để escape chuỗi JSON một cách an toàn
+		// 2. Lấy cookie đã được lưu cho domain của trang web.
+		val domainUrl = "https://$domain/".toHttpUrl()
+		val cookies = webClient.cookieJar.loadForRequest(domainUrl)
+
+		// 3. Format cookie thành một chuỗi header duy nhất (vd: "name1=value1; name2=value2").
+		val cookieHeader = cookies.joinToString("; ") { "${it.name}=${it.value}" }
+
+		// Helper function để escape chuỗi JSON an toàn.
 		fun String.escapeJson(): String = this.replace("\\", "\\\\").replace("\"", "\\\"")
 
-		val referer = fullUrl.escapeJson()
-		val userAgent = getRequestHeaders()["User-Agent"]!!.escapeJson()
-		
-		// Tạo chuỗi JSON chứa headers
-		val headersJson = """{"Referer":"$referer","User-Agent":"$userAgent"}"""
+		// 4. Build một map chứa tất cả các header cần thiết.
+		val headersMap = mutableMapOf<String, String>()
+		headersMap["Referer"] = fullUrl
+		headersMap["User-Agent"] = getRequestHeaders()["User-Agent"]!!
+
+		// Chỉ thêm header "Cookie" nếu nó không rỗng.
+		if (cookieHeader.isNotBlank()) {
+			headersMap["Cookie"] = cookieHeader
+		}
+
+		// 5. Chuyển map header thành chuỗi JSON.
+		val headersJson = headersMap.entries.joinToString(prefix = "{", postfix = "}", separator = ",") { (key, value) ->
+			"\"${key.escapeJson()}\":\"${value.escapeJson()}\""
+		}
 
 		return doc.select("div.text-center div.lazy")
 			.mapNotNull { div ->
@@ -193,12 +212,12 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 						url.endsWith(".png", ignoreCase = true) ||
 						url.endsWith(".webp", ignoreCase = true))
 				) {
-					// Nối chuỗi JSON header vào cuối URL gốc
+					// 6. Nối chuỗi JSON header vào cuối URL gốc.
 					val urlWithHeaders = "$url#Doki-Headers=$headersJson"
 
 					MangaPage(
 						id = generateUid(url),
-						url = urlWithHeaders, // Sử dụng URL đã chứa header
+						url = urlWithHeaders,
 						preview = null,
 						source = source,
 					)
