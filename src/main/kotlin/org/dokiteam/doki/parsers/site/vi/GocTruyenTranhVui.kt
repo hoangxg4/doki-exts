@@ -29,10 +29,19 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
     private val requestMutex = Mutex()
     private var lastRequestTime = 0L
 
+    private val apiHeaders by lazy {
+        Headers.Builder()
+            .add("Authorization", TOKEN_KEY)
+            .add("Referer", "https://$domain/")
+            .add("X-Requested-With", "XMLHttpRequest")
+            .build()
+    }
+
     override val availableSortOrders: Set<SortOrder> = EnumSet.of(
         SortOrder.UPDATED,
         SortOrder.POPULARITY,
-        SortOrder.NEWEST
+        SortOrder.NEWEST,
+        SortOrder.RATING
     )
 
     override val filterCapabilities = MangaListFilterCapabilities(
@@ -53,54 +62,54 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
             if (!filter.query.isNullOrBlank()) {
                 append("&searchValue=${filter.query.urlEncoded()}")
             }
+
             val sortValue = when (order) {
-                SortOrder.POPULARITY -> "recommend"
-                SortOrder.NEWEST -> "newest"
-                else -> "recentDate"
+                SortOrder.POPULARITY -> "viewCount"
+                SortOrder.NEWEST -> "createdAt"
+                SortOrder.RATING -> "evaluationScore"
+                else -> "recentDate" // UPDATED
             }
             append("&orders%5B%5D=$sortValue")
-            // SỬA LỖI 400 TẠI ĐÂY: Mã hóa cứng "genres[]" thành "genres%5B%5D"
-            filter.tags.forEach { append("&genres%5B%5D=${it.key}") }
+
+            filter.tags.forEach { append("&categories%5B%5D=${it.key}") }
+
             filter.states.forEach {
                 val statusKey = when (it) {
-                    MangaState.ONGOING -> "0"
-                    MangaState.FINISHED -> "1"
+                    MangaState.ONGOING -> "PRG"
+                    MangaState.FINISHED -> "END"
                     else -> null
                 }
-                if (statusKey != null) append("&status[]=$statusKey")
+                if (statusKey != null) append("&status%5B%5D=$statusKey")
             }
         }
 
-        val json = webClient.httpGet(url).parseJson()
-        val data = json.getJSONObject("result").getJSONArray("data")
-        val mangaList = mutableListOf<Manga>()
+        val json = webClient.httpGet(url, extraHeaders = apiHeaders).parseJson()
+        val result = json.optJSONObject("result") ?: return emptyList()
+        val data = result.optJSONArray("data") ?: return emptyList()
 
-        for (i in 0 until data.length()) {
+        return List(data.length()) { i ->
             val item = data.getJSONObject(i)
-            val slug = item.optString("name_slug", null)
-            if (slug.isNullOrBlank()) {
-                continue
-            }
-
+            val slug = item.getString("nameEn")
             val mangaUrl = "/truyen/$slug"
-            mangaList.add(
-                Manga(
-                    id = generateUid(mangaUrl),
-                    title = item.getString("name"),
-                    altTitles = item.optString("name_other", "").split(",").mapNotNull { it.trim().takeIf(String::isNotBlank) }.toSet(),
-                    url = mangaUrl,
-                    publicUrl = "https://$domain$mangaUrl",
-                    rating = RATING_UNKNOWN,
-                    contentRating = null,
-                    coverUrl = "https://$domain${item.getString("image_poster")}",
-                    tags = emptySet(),
-                    state = null,
-                    authors = emptySet(),
-                    source = source
-                )
+            Manga(
+                id = generateUid(mangaUrl),
+                title = item.getString("name"),
+                altTitles = item.optString("otherName", "").split(",").mapNotNull { it.trim().takeIf(String::isNotBlank) }.toSet(),
+                url = mangaUrl,
+                publicUrl = "https://$domain$mangaUrl",
+                rating = item.optDouble("evaluationScore", 0.0).toFloat(),
+                contentRating = null,
+                coverUrl = "https://$domain${item.getString("photo")}",
+                tags = emptySet(),
+                state = when (item.optString("statusCode")) {
+                    "PRG" -> MangaState.ONGOING
+                    "END" -> MangaState.FINISHED
+                    else -> null
+                },
+                authors = setOf(item.optString("author", "Updating")),
+                source = source
             )
         }
-        return mangaList
     }
 
     override suspend fun getDetails(manga: Manga): Manga {
@@ -111,7 +120,7 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
 
         enforceRateLimit()
         val chapterApiUrl = "https://$domain/api/comic/$comicId/chapter?limit=-1"
-        val chapterJson = webClient.httpGet(chapterApiUrl).parseJson()
+        val chapterJson = webClient.httpGet(chapterApiUrl, extraHeaders = apiHeaders).parseJson()
         val chaptersData = chapterJson.getJSONObject("result").getJSONArray("chapters")
         val slug = manga.url.substringAfterLast("/")
         val chapters = List(chaptersData.length()) { i ->
@@ -207,21 +216,19 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
             lastRequestTime = System.currentTimeMillis()
         }
     }
-
+    
+    // Key thể loại mới cho API v2
     private val GTT_GENRES = listOf(
-        "Action" to "2", "Adult" to "3", "Adventure" to "4", "Anime" to "5", "Chuyển Sinh" to "6",
-        "Cổ Đại" to "7", "Comedy" to "8", "Comic" to "9", "Cooking" to "10", "Detective" to "11",
-        "Doujinshi" to "12", "Drama" to "13", "Đam Mỹ" to "14", "Ecchi" to "15", "Fantasy" to "16",
-        "Gender Bender" to "17", "Harem" to "18", "Historical" to "19", "Horror" to "20",
-        "Huyền Huyễn" to "21", "Isekai" to "22", "Josei" to "23", "Live Action" to "24",
-        "Magic" to "25", "Manhua" to "26", "Manhwa" to "27", "Martial Arts" to "28",
-        "Mature" to "29", "Mecha" to "30", "Medical" to "31", "Military" to "32",
-        "Mystery" to "33", "Ngôn Tình" to "34", "One shot" to "35", "Psychological" to "36",
-        "Romance" to "37", "School Life" to "38", "Sci-fi" to "39", "Seinen" to "40",
-        "Shoujo" to "41", "Shoujo Ai" to "42", "Shounen" to "43", "Shounen Ai" to "44",
-        "Slice of Life" to "45", "Smut" to "46", "Soft Yaoi" to "47", "Soft Yuri" to "48",
-        "Sports" to "49", "Supernatural" to "50", "Tạp chí truyện tranh" to "51",
-        "Tragedy" to "52", "Trinh Thám" to "53", "Truyện scan" to "54", "Truyện Màu" to "55",
-        "Việt Nam" to "56", "Webtoon" to "57", "Xuyên Không" to "58", "Yaoi" to "59", "Yuri" to "60"
+        "Action" to "ACT", "Adult" to "ADU", "Adventure" to "ADV", "Anime" to "ANI",
+        "Chuyển Sinh" to "RED", "Cổ Đại" to "HIS", "Comedy" to "COM", "Comic" to "CMC",
+        "Cooking" to "COO", "Doujinshi" to "DOU", "Drama" to "DRA", "Ecchi" to "ECC",
+        "Fantasy" to "FTS", "Gender Bender" to "GDB", "Harem" to "HAR", "Historical" to "HIS",
+        "Horror" to "HOR", "Huyền Huyễn" to "MYS", "Isekai" to "ISE", "Josei" to "JOS",
+        "Live Action" to "LIA", "Magic" to "MAG", "Manhua" to "MAU", "Manhwa" to "MAW",
+        "Martial Arts" to "MAA", "Mature" to "MAT", "Mystery" to "MYS", "Ngôn Tình" to "ROM",
+        "One shot" to "OSH", "Romance" to "ROM", "School Life" to "SCL", "Sci-fi" to "SCF",
+        "Shoujo" to "SHJ", "Shounen" to "SHO", "Slice of Life" to "SOL", "Sports" to "SPO",
+        "Supernatural" to "SUN", "Tragedy" to "TRA", "Truyện Màu" to "COI", "Webtoon" to "WEB",
+        "Xuyên Không" to "COI" // Gán Xuyên Không vào Truyện Màu vì không có mã riêng
     )
 }
