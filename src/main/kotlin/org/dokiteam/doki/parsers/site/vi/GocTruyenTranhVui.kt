@@ -7,6 +7,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okhttp3.Headers
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
@@ -131,7 +132,7 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
                             volume = 0,
                             url = chapterUrl,
                             scanlator = null,
-                            uploadDate = runCatching { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ENGLISH).parse(item.getString("created_at"))?.time }.getOrDefault(0L),
+                            uploadDate = runCatching { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ENGLISH).parse(item.getString("created_at"))?.time }.getOrNull() ?: 0L,
                             branch = null,
                             source = source
                         )
@@ -181,7 +182,8 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
                 .add("Referer", chapter.url.toAbsoluteUrl(domain))
                 .build()
 
-            val response = webClient.httpPost(url = "https://$domain/api/chapter/auth", form = formBody, extraHeaders = authHeaders)
+            val apiUrl = "https://$domain/api/chapter/auth".toHttpUrl()
+            val response = webClient.httpPost(url = apiUrl, form = formBody, extraHeaders = authHeaders)
             val json = JSONObject(response.body!!.string())
             val data = json.getJSONObject("result").getJSONArray("data")
             imageUrls = (0 until data.length()).map { data.getString(it) }
