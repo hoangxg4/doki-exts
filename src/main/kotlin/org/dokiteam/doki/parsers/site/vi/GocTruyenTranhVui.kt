@@ -12,6 +12,7 @@ import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import org.json.JSONObject
+import org.jsoup.Jsoup
 import java.util.*
 
 @MangaSourceParser("GOCTRUYENTRANHVUI", "Goc Truyen Tranh Vui", "vi")
@@ -98,7 +99,7 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
             val categoryCodes = item.optJSONArray("categoryCode")?.let { arr ->
                 (0 until arr.length()).map { arr.getString(it) }
             } ?: emptyList()
-            
+
             val tags = categoryNames.zip(categoryCodes).map { (name, code) ->
                 MangaTag(key = code, title = name, source = source)
             }.toSet()
@@ -127,7 +128,7 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
     override suspend fun getDetails(manga: Manga): Manga {
         enforceRateLimit()
         val responseBody = webClient.httpGet(manga.publicUrl).body!!.string()
-        val doc = responseBody.parseAsHtml()
+        val doc = Jsoup.parse(responseBody) // SỬA LỖI: Dùng Jsoup.parse()
         val comicId = responseBody.substringAfter("comic = {id:\"").substringBefore("\"")
 
         enforceRateLimit()
@@ -155,11 +156,13 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
 
         val nameToIdMap = GTT_GENRES.associate { (name, id) -> name to id }
         val tagElements = doc.select(".group-content > .v-chip-link")
-        val tags = tagElements.map { element ->
+        // SỬA LỖI: Viết lại logic parse tag một cách tường minh
+        val tags = mutableSetOf<MangaTag>()
+        for (element in tagElements) {
             val tagName = element.text()
             val tagId = nameToIdMap[tagName] ?: tagName
-            MangaTag(key = tagId, title = tagName, source = source)
-        }.toSet()
+            tags.add(MangaTag(key = tagId, title = tagName, source = source))
+        }
 
         return manga.copy(
             title = doc.selectFirst(".v-card-title")?.text().orEmpty(),
@@ -179,8 +182,6 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
     override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
         enforceRateLimit()
         val doc = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseHtml()
-        
-        // --- LOGIC LẤY ẢNH ĐƯỢC VIẾT LẠI HOÀN TOÀN ---
         val scriptContent = doc.selectFirst("script:contains(chapterJson:)")?.data()
             ?: throw Exception("Không tìm thấy script chứa thông tin chapter")
 
