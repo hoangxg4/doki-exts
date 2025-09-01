@@ -76,7 +76,6 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
 
         for (i in 0 until data.length()) {
             val item = data.getJSONObject(i)
-            // SỬA LỖI: Dùng optString để tránh crash, và bỏ qua truyện nếu slug không tồn tại
             val slug = item.optString("name_slug", null)
             if (slug.isNullOrBlank()) {
                 continue
@@ -131,8 +130,15 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
             )
         }
 
+        // --- SỬA LỖI HIỂN THỊ THỂ LOẠI TẠI ĐÂY ---
+        val nameToIdMap = GTT_GENRES.associate { (name, id) -> name to id }
         val tagElements = doc.select(".group-content > .v-chip-link")
-        val tags = tagElements.map { MangaTag(it.text(), it.text(), source) }.toSet()
+        val tags = tagElements.map { element ->
+            val tagName = element.text()
+            val tagId = nameToIdMap[tagName] ?: tagName // Nếu không tìm thấy ID, dùng tạm tên
+            MangaTag(key = tagId, title = tagName, source = source)
+        }.toSet()
+        // --- KẾT THÚC SỬA LỖI ---
 
         return manga.copy(
             title = doc.selectFirst(".v-card-title")?.text().orEmpty(),
