@@ -58,7 +58,6 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
                 SortOrder.NEWEST -> "newest"
                 else -> "recentDate"
             }
-            // SỬA LỖI 400 TẠI ĐÂY: Mã hóa cứng "orders[]" thành "orders%5B%5D"
             append("&orders%5B%5D=$sortValue")
             filter.tags.forEach { append("&genres[]=${it.key}") }
             filter.states.forEach {
@@ -73,25 +72,35 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
 
         val json = webClient.httpGet(url).parseJson()
         val data = json.getJSONObject("result").getJSONArray("data")
-        return List(data.length()) { i ->
+        val mangaList = mutableListOf<Manga>()
+
+        for (i in 0 until data.length()) {
             val item = data.getJSONObject(i)
-            val slug = item.getString("name_slug")
+            // SỬA LỖI: Dùng optString để tránh crash, và bỏ qua truyện nếu slug không tồn tại
+            val slug = item.optString("name_slug", null)
+            if (slug.isNullOrBlank()) {
+                continue
+            }
+
             val mangaUrl = "/truyen/$slug"
-            Manga(
-                id = generateUid(mangaUrl),
-                title = item.getString("name"),
-                altTitles = item.optString("name_other", "").split(",").mapNotNull { it.trim().takeIf(String::isNotBlank) }.toSet(),
-                url = mangaUrl,
-                publicUrl = "https://$domain$mangaUrl",
-                rating = RATING_UNKNOWN,
-                contentRating = null,
-                coverUrl = "https://$domain${item.getString("image_poster")}",
-                tags = emptySet(),
-                state = null,
-                authors = emptySet(),
-                source = source
+            mangaList.add(
+                Manga(
+                    id = generateUid(mangaUrl),
+                    title = item.getString("name"),
+                    altTitles = item.optString("name_other", "").split(",").mapNotNull { it.trim().takeIf(String::isNotBlank) }.toSet(),
+                    url = mangaUrl,
+                    publicUrl = "https://$domain$mangaUrl",
+                    rating = RATING_UNKNOWN,
+                    contentRating = null,
+                    coverUrl = "https://$domain${item.getString("image_poster")}",
+                    tags = emptySet(),
+                    state = null,
+                    authors = emptySet(),
+                    source = source
+                )
             )
         }
+        return mangaList
     }
 
     override suspend fun getDetails(manga: Manga): Manga {
