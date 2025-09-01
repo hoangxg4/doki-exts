@@ -59,7 +59,8 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
                 else -> "recentDate"
             }
             append("&orders%5B%5D=$sortValue")
-            filter.tags.forEach { append("&genres[]=${it.key}") }
+            // SỬA LỖI 400 TẠI ĐÂY: Mã hóa cứng "genres[]" thành "genres%5B%5D"
+            filter.tags.forEach { append("&genres%5B%5D=${it.key}") }
             filter.states.forEach {
                 val statusKey = when (it) {
                     MangaState.ONGOING -> "0"
@@ -130,15 +131,13 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
             )
         }
 
-        // --- SỬA LỖI HIỂN THỊ THỂ LOẠI TẠI ĐÂY ---
         val nameToIdMap = GTT_GENRES.associate { (name, id) -> name to id }
         val tagElements = doc.select(".group-content > .v-chip-link")
         val tags = tagElements.map { element ->
             val tagName = element.text()
-            val tagId = nameToIdMap[tagName] ?: tagName // Nếu không tìm thấy ID, dùng tạm tên
+            val tagId = nameToIdMap[tagName] ?: tagName
             MangaTag(key = tagId, title = tagName, source = source)
         }.toSet()
-        // --- KẾT THÚC SỬA LỖI ---
 
         return manga.copy(
             title = doc.selectFirst(".v-card-title")?.text().orEmpty(),
