@@ -12,13 +12,12 @@ import org.dokiteam.doki.parsers.util.*
 import java.util.*
 
 @MangaSourceParser("KURONEKO", "Kuro Neko / vi-Hentai", "vi", type = ContentType.HENTAI)
-internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.KURONEKO, 60) {
+internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.KURONEKO, 30) {
 
 	override val configKeyDomain = ConfigKey.Domain("vi-hentai.moe")
 
 	companion object {
 		private const val REQUEST_DELAY_MS = 1500L
-		private const val SEARCH_RESULT_LIMIT = 30
 	}
 
 	private val requestMutex = Mutex()
@@ -150,7 +149,6 @@ internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context,
 		val doc = webClient.httpGet(url).parseHtml()
 
 		return doc.select("div.grid div.relative")
-			.take(SEARCH_RESULT_LIMIT)
 			.map { div ->
 				val href = div.selectFirst("a[href^=/truyen/]")?.attrOrNull("href")
 					?: div.parseFailed("Không thể tìm thấy nguồn ảnh của Manga này!")
@@ -229,24 +227,11 @@ internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context,
 		val fullUrl = chapter.url.toAbsoluteUrl(domain)
 		val doc = webClient.httpGet(fullUrl).parseHtml()
 
-		// Selector được tối ưu để lấy tất cả thẻ img bên trong div.text-center
-		return doc.select("div.text-center img").mapNotNull { img ->
-			// Dùng attrOrNull để tránh lỗi nếu thuộc tính 'src' không tồn tại
+		return doc.select("div.text-center img.max-w-full").mapNotNull { img ->
 			val url = img.attrOrNull("src") ?: return@mapNotNull null
-			
-			// Xử lý trường hợp URL là lazy-loading (dùng data-src)
-			val finalUrl = if (url.isBlank() && !img.attr("data-src").isNullOrBlank()) {
-				img.attr("data-src")
-			} else {
-				url
-			}
-			
-			// Bỏ qua nếu URL vẫn rỗng
-			if(finalUrl.isBlank()) return@mapNotNull null
-
 			MangaPage(
-				id = generateUid(finalUrl),
-				url = finalUrl,
+				id = generateUid(url),
+				url = url,
 				preview = null,
 				source = source,
 			)
