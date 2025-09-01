@@ -95,9 +95,9 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
 
     override suspend fun getDetails(manga: Manga): Manga {
         enforceRateLimit()
-        val html = webClient.httpGet(manga.publicUrl).body!!.string()
-        val doc = html.parseAsHtml()
-        val comicId = html.substringAfter("comic = {id:\"").substringBefore("\"")
+        val response = webClient.httpGet(manga.publicUrl)
+        val doc = response.parseHtml() // Sử dụng parseHtml() từ response
+        val comicId = response.body!!.string().substringAfter("comic = {id:\"").substringBefore("\"")
 
         enforceRateLimit()
         val chapterApiUrl = "https://$domain/api/comic/$comicId/chapter?limit=-1"
@@ -121,9 +121,12 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
             )
         }
 
+        val tagElements = doc.select(".group-content > .v-chip-link")
+        val tags = tagElements.map { MangaTag(it.text(), it.text(), source) }.toSet()
+
         return manga.copy(
             title = doc.selectFirst(".v-card-title")?.text().orEmpty(),
-            tags = doc.select(".group-content > .v-chip-link").map { MangaTag(it.text(), it.text(), source) }.toSet(),
+            tags = tags,
             coverUrl = doc.selectFirst("img.image")?.absUrl("src"),
             state = when (doc.selectFirst(".mb-1:contains(Trạng thái:) span")?.text()) {
                 "Đang thực hiện" -> MangaState.ONGOING
