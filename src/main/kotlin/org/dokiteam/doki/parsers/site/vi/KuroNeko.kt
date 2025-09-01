@@ -18,7 +18,7 @@ internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context,
 
 	companion object {
 		// Rate limit for getPages: 15 requests per minute -> 60,000ms / 15 = 4000ms per request
-		private const val PAGES_REQUEST_DELAY_MS = 4000L
+		private const val PAGES_REQUEST_DELAY_MS = 5000L
 		private val pagesRequestMutex = Mutex()
 		private var lastPagesRequestTime = 0L
 	}
