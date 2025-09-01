@@ -19,7 +19,6 @@ internal class TruyenQQ(context: MangaLoaderContext) : PagedMangaParser(context,
 
 	companion object {
 		private const val REQUEST_DELAY_MS = 1500L
-		private const val SEARCH_RESULT_LIMIT = 24
 	}
 
 	private val requestMutex = Mutex()
@@ -138,7 +137,6 @@ internal class TruyenQQ(context: MangaLoaderContext) : PagedMangaParser(context,
 		}
 		val doc = webClient.httpGet(url).parseHtml()
 		return doc.requireElementById("main_homepage").select("li")
-			.take(SEARCH_RESULT_LIMIT)
 			.map { li ->
 				val href = li.selectFirstOrThrow("a").attrAsRelativeUrl("href")
 				Manga(
