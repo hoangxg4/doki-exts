@@ -58,7 +58,8 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
                 SortOrder.NEWEST -> "newest"
                 else -> "recentDate"
             }
-            append("&orders[]=$sortValue")
+            // SỬA LỖI 400 TẠI ĐÂY: Mã hóa cứng "orders[]" thành "orders%5B%5D"
+            append("&orders%5B%5D=$sortValue")
             filter.tags.forEach { append("&genres[]=${it.key}") }
             filter.states.forEach {
                 val statusKey = when (it) {
@@ -96,7 +97,7 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
     override suspend fun getDetails(manga: Manga): Manga {
         enforceRateLimit()
         val response = webClient.httpGet(manga.publicUrl)
-        val doc = response.parseHtml() // Sử dụng parseHtml() từ response
+        val doc = response.parseHtml()
         val comicId = response.body!!.string().substringAfter("comic = {id:\"").substringBefore("\"")
 
         enforceRateLimit()
