@@ -20,7 +20,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 @MangaSourceParser("GOCTRUYENTRANHVUI", "Goc Truyen Tranh Vui", "vi")
-internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.GOCTRUYENTRANHVUI, 50) {
+internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser(context, source, 50) { // <-- SỬA LỖI Ở ĐÂY
 
     override val configKeyDomain = ConfigKey.Domain("goctruyentranhvui17.com")
     private val apiUrl by lazy { "https://$domain/api/v2" }
