@@ -17,8 +17,8 @@ internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context,
 	override val configKeyDomain = ConfigKey.Domain("vi-hentai.moe")
 
 	companion object {
-		private const val REQUEST_DELAY_MS = 1500L
-		private const val SEARCH_RESULT_LIMIT = 24
+		private const val REQUEST_DELAY_MS = 2000L
+		private const val SEARCH_RESULT_LIMIT = 30
 	}
 
 	private val requestMutex = Mutex()
