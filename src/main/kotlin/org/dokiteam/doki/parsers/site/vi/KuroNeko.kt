@@ -17,7 +17,7 @@ internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context,
 	override val configKeyDomain = ConfigKey.Domain("vi-hentai.moe")
 
 	companion object {
-		private const val REQUEST_DELAY_MS = 2000L
+		private const val REQUEST_DELAY_MS = 1500L
 		private const val SEARCH_RESULT_LIMIT = 30
 	}
 
@@ -226,20 +226,31 @@ internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context,
 	}
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-    return webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseHtml()
-        .select("div.text-center img")
-        .mapNotNull { img ->
-            (img.attr("src").takeIf { it.isNotBlank() } ?: img.attr("data-src"))
-                .takeIf { it.isNotBlank() }
-                ?.let { url -> // Chỉ thực thi khối này nếu url không null và không rỗng
-                    MangaPage(
-                        id = generateUid(url),
-                        url = url,
-                        preview = null,
-                        source = source
-                    )
-                }
-        }
+		val fullUrl = chapter.url.toAbsoluteUrl(domain)
+		val doc = webClient.httpGet(fullUrl).parseHtml()
+
+		// Selector được tối ưu để lấy tất cả thẻ img bên trong div.text-center
+		return doc.select("div.text-center img").mapNotNull { img ->
+			// Dùng attrOrNull để tránh lỗi nếu thuộc tính 'src' không tồn tại
+			val url = img.attrOrNull("src") ?: return@mapNotNull null
+			
+			// Xử lý trường hợp URL là lazy-loading (dùng data-src)
+			val finalUrl = if (url.isBlank() && !img.attr("data-src").isNullOrBlank()) {
+				img.attr("data-src")
+			} else {
+				url
+			}
+			
+			// Bỏ qua nếu URL vẫn rỗng
+			if(finalUrl.isBlank()) return@mapNotNull null
+
+			MangaPage(
+				id = generateUid(finalUrl),
+				url = finalUrl,
+				preview = null,
+				source = source,
+			)
+		}
 	}
 
 	private suspend fun availableTags(): Set<MangaTag> {
