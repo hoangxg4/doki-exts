@@ -12,12 +12,12 @@ import org.dokiteam.doki.parsers.util.*
 import java.util.*
 
 @MangaSourceParser("KURONEKO", "Kuro Neko / vi-Hentai", "vi", type = ContentType.HENTAI)
-internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.KURONEKO, 30) {
+internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.KURONEKO, 15) {
 
 	override val configKeyDomain = ConfigKey.Domain("vi-hentai.moe")
 
 	companion object {
-		private const val REQUEST_DELAY_MS = 1500L
+		private const val REQUEST_DELAY_MS = 1000L
 	}
 
 	private val requestMutex = Mutex()
