@@ -14,6 +14,7 @@ import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import org.json.JSONObject
+import org.jsoup.Jsoup
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -102,13 +103,13 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
 
     override suspend fun getDetails(manga: Manga): Manga {
         return coroutineScope {
-            val detailsJob = async {
+            val htmlJob = async {
                 enforceRateLimit()
                 webClient.httpGet(manga.publicUrl).body!!.string()
             }
 
-            val html = detailsJob.await()
-            val doc = html.asJsoup()
+            val html = htmlJob.await()
+            val doc = Jsoup.parse(html)
             val comicId = html.substringAfter("comic = {id:\"").substringBefore("\"")
 
             val chaptersJob = async {
@@ -130,7 +131,7 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
                             volume = 0,
                             url = chapterUrl,
                             scanlator = null,
-                            uploadDate = runCatching { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ENGLISH).parse(item.getString("created_at"))?.time }.getOrNull(),
+                            uploadDate = runCatching { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ENGLISH).parse(item.getString("created_at"))?.time }.getOrDefault(0L),
                             branch = null,
                             source = source
                         )
@@ -141,7 +142,7 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
 
             manga.copy(
                 title = doc.selectFirst(".v-card-title")?.text().orEmpty(),
-                tags = doc.select(".group-content > .v-chip-link").mapToSet { MangaTag(it.text(), it.text(), source) },
+                tags = doc.select(".group-content > .v-chip-link").map { MangaTag(it.text(), it.text(), source) }.toSet(),
                 coverUrl = doc.selectFirst("img.image")?.absUrl("src"),
                 state = when (doc.selectFirst(".mb-1:contains(Trạng thái:) span")?.text()) {
                     "Đang thực hiện" -> MangaState.ONGOING
@@ -180,7 +181,7 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
                 .add("Referer", chapter.url.toAbsoluteUrl(domain))
                 .build()
 
-            val response = webClient.httpPost("https://$domain/api/chapter/auth", form = formBody, extraHeaders = authHeaders)
+            val response = webClient.httpPost(url = "https://$domain/api/chapter/auth", form = formBody, extraHeaders = authHeaders)
             val json = JSONObject(response.body!!.string())
             val data = json.getJSONObject("result").getJSONArray("data")
             imageUrls = (0 until data.length()).map { data.getString(it) }
