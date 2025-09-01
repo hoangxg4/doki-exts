@@ -6,19 +6,15 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
-import org.dokiteam.doki.network.GET
-import org.dokiteam.doki.network.POST
-import org.dokiteam.doki.network.bodyAs
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
 import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
-import java.util.EnumSet
+import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.*
 
 @MangaSourceParser("GOCTRUYENTRANHVUI", "Goc Truyen Tranh Vui", "vi")
 internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.GOCTRUYENTRANHVUI, 50) {
@@ -33,12 +29,6 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
 
     private val requestMutex = Mutex()
     private var lastRequestTime = 0L
-
-    private val json = Json {
-        ignoreUnknownKeys = true
-        isLenient = true
-        coerceInputValues = true
-    }
 
     override val availableSortOrders: Set<SortOrder> = EnumSet.of(
         SortOrder.UPDATED,
@@ -90,18 +80,35 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
             }
         }
 
-        val response = webClient.httpGet(url).bodyAs<String>()
-        val result = json.decodeFromString<ResultDto<ListingDto>>(response)
-        return result.result.data.map { it.toManga(source) }
+        val response = webClient.httpGet(url).bodyAsJson()
+        val data = response.getJSONObject("result").getJSONArray("data")
+        
+        return data.map { item ->
+            val mangaJson = item as JSONObject
+            val slug = mangaJson.getString("name_slug")
+            val mangaUrl = "/truyen/$slug"
+            Manga(
+                id = generateUid(mangaUrl),
+                title = mangaJson.getString("name"),
+                altTitles = mangaJson.optString("name_other", "")
+                    .split(",")
+                    .mapNotNull { it.trim().takeIf(String::isNotBlank) }
+                    .toSet(),
+                url = mangaUrl,
+                publicUrl = "https://$domain$mangaUrl",
+                coverUrl = "https://$domain${mangaJson.getString("image_poster")}",
+                source = source
+            )
+        }
     }
 
     override suspend fun getDetails(manga: Manga): Manga {
         return coroutineScope {
-            val (comicId, slug) = manga.id.split(":")
-            
+            val slug = manga.url.substringAfterLast("/")
+
             val detailsJob = async {
                 enforceRateLimit()
-                val doc = webClient.httpGet("https://$domain/truyen/$slug").parseHtml()
+                val doc = webClient.httpGet(manga.publicUrl).parseHtml()
                 manga.copy(
                     title = doc.selectFirst(".v-card-title")?.text().orEmpty(),
                     tags = doc.select(".group-content > .v-chip-link").mapToSet {
@@ -120,10 +127,34 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
 
             val chaptersJob = async {
                 enforceRateLimit()
+                // We need the comicId, which is not in the manga object. We have to get it from the HTML page.
+                // This is inefficient, but required by the site's structure.
+                val mangaPageHtml = webClient.httpGet(manga.publicUrl).bodyAs<String>()
+                val comicId = mangaPageHtml.substringAfter("comic = {id:\"").substringBefore("\"")
+
                 val url = "https://$domain/api/comic/$comicId/chapter?limit=-1"
-                val response = webClient.httpGet(url).bodyAs<String>()
-                val chapterJson = json.decodeFromString<ResultDto<ChapterListDto>>(response)
-                chapterJson.result.chapters.map { it.toMangaChapter(slug, source) }
+                val response = webClient.httpGet(url).bodyAsJson()
+                val chaptersJson = response.getJSONObject("result").getJSONArray("chapters")
+                
+                chaptersJson.map { item ->
+                    val chapterJson = item as JSONObject
+                    val number = chapterJson.getString("number")
+                    val chapterUrl = "/truyen/$slug/chuong-$number"
+                    MangaChapter(
+                        id = generateUid(chapterUrl),
+                        title = chapterJson.getString("name"),
+                        url = chapterUrl,
+                        number = number.toFloatOrNull() ?: -1f,
+                        uploadDate = runCatching {
+                            SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ENGLISH)
+                                .parse(chapterJson.getString("created_at"))?.time
+                        }.getOrNull(),
+                        volume = 0,
+                        scanlator = null,
+                        branch = null,
+                        source = source
+                    )
+                }
             }
             
             val (detailedManga, chapters) = awaitAll(detailsJob, chaptersJob)
@@ -139,19 +170,18 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
             ?.data()
             ?.substringAfter("chapterJson: `")
             ?.substringBefore("`")
-            ?: throw Exception("Could not find chapter JSON")
 
-        val imageUrls: List<String> = if (chapterJsonRaw.isNotBlank()) {
-            json.decodeFromString<ImageListWrapper>(chapterJsonRaw).body.result.data
+        val imageUrls: List<String> = if (chapterJsonRaw != null && chapterJsonRaw.isNotBlank()) {
+            JSONObject(chapterJsonRaw).getJSONObject("body").getJSONObject("result").getJSONArray("data").map { it.toString() }
         } else {
             // Auth required
             val html = doc.html()
-            val comicId = html.substringAfter("id: \"").substringBefore("\"")
-            val (slug, chapterNum) = chapter.url.substringAfter("/truyen/").split("/")
+            val comicId = html.substringAfter("comic = {id:\"").substringBefore("\"")
+            val (slug, chapterNumRaw) = chapter.url.substringAfter("/truyen/").split("/")
             
             val formBody = mapOf(
                 "comicId" to comicId,
-                "chapterNumber" to chapterNum.substringAfter("chuong-"),
+                "chapterNumber" to chapterNumRaw.substringAfter("chuong-"),
                 "nameEn" to slug
             )
 
@@ -161,18 +191,17 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
                 "Referer" to chapter.url.toAbsoluteUrl(domain)
             )
 
-            val response = webClient.httpPost("https://$domain/api/chapter/auth", body = formBody, headers = authHeaders).bodyAs<String>()
-            json.decodeFromString<ResultDto<ImageListDto>>(response).result.data
+            val responseJson = webClient.httpPost("https://$domain/api/chapter/auth", form = formBody, extraHeaders = authHeaders).bodyAsJson()
+            responseJson.getJSONObject("result").getJSONArray("data").map { it.toString() }
         }
         
-        return imageUrls.mapIndexed { index, url ->
+        return imageUrls.map { url ->
             val finalUrl = if (url.startsWith("/image/")) "https://$domain$url" else url
             MangaPage(
                 id = generateUid(finalUrl),
                 url = finalUrl,
                 preview = null,
-                source = source,
-                pageNumber = index
+                source = source
             )
         }
     }
@@ -187,68 +216,6 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
             lastRequestTime = System.currentTimeMillis()
         }
     }
-
-    // Data classes for JSON parsing
-    @Serializable
-    data class ResultDto<T>(val result: T)
-
-    @Serializable
-    data class ListingDto(
-        val next: Boolean = false,
-        val data: List<MangaItemDto>
-    )
-
-    @Serializable
-    data class MangaItemDto(
-        val id: String,
-        @SerialName("name_slug") val nameSlug: String,
-        @SerialName("name_other") val nameOther: String? = null,
-        val name: String,
-        @SerialName("image_poster") val imagePoster: String,
-        @SerialName("image_avatar") val imageAvatar: String
-    ) {
-        fun toManga(source: MangaSource) = Manga(
-            id = "$id:$nameSlug",
-            title = name,
-            altTitles = nameOther?.split(", ")?.mapNotNull { it.trim().takeIf(String::isNotBlank) }?.toSet() ?: emptySet(),
-            url = "/truyen/$nameSlug",
-            publicUrl = "https://goctruyentranhvui17.com/truyen/$nameSlug",
-            coverUrl = "https://goctruyentranhvui17.com$imagePoster",
-            source = source
-        )
-    }
-
-    @Serializable
-    data class ChapterListDto(val chapters: List<ChapterItemDto>)
-
-    @Serializable
-    data class ChapterItemDto(
-        val id: String,
-        val name: String,
-        val number: String,
-        @SerialName("created_at") val createdAt: String
-    ) {
-        fun toMangaChapter(slug: String, source: MangaSource): MangaChapter {
-            val url = "/truyen/$slug/chuong-$number"
-            return MangaChapter(
-                id = generateUid(url),
-                title = name,
-                url = url,
-                number = number.toFloatOrNull() ?: -1f,
-                uploadDate = runCatching {
-                    // Assuming format is like "2024-05-21 00:00:00"
-                    SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ENGLISH).parse(createdAt)?.time
-                }.getOrNull(),
-                source = source
-            )
-        }
-    }
-
-    @Serializable
-    data class ImageListWrapper(val body: ResultDto<ImageListDto>)
-
-    @Serializable
-    data class ImageListDto(val data: List<String>)
     
     // Static data
     private val GTT_GENRES = listOf(
