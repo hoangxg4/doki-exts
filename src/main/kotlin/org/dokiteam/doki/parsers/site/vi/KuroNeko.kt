@@ -17,11 +17,11 @@ internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context,
 	override val configKeyDomain = ConfigKey.Domain("vi-hentai.moe")
 
 	companion object {
-		private const val REQUEST_DELAY_MS = 1000L
+		// Rate limit for getPages: 15 requests per minute -> 60,000ms / 15 = 4000ms per request
+		private const val PAGES_REQUEST_DELAY_MS = 4000L
+		private val pagesRequestMutex = Mutex()
+		private var lastPagesRequestTime = 0L
 	}
-
-	private val requestMutex = Mutex()
-	private var lastRequestTime = 0L
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
@@ -51,15 +51,6 @@ internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context,
 	)
 
 	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
-		requestMutex.withLock {
-			val currentTime = System.currentTimeMillis()
-			val timeSinceLastRequest = currentTime - lastRequestTime
-			if (timeSinceLastRequest < REQUEST_DELAY_MS) {
-				delay(REQUEST_DELAY_MS - timeSinceLastRequest)
-			}
-			lastRequestTime = System.currentTimeMillis()
-		}
-
 		val url = buildString {
 			if (!filter.author.isNullOrEmpty()) {
 				clear()
@@ -119,6 +110,8 @@ internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context,
 				append(filter.query.urlEncoded())
 			}
 
+
+
 			if (page > 1) {
 				append("&page=")
 				append(page)
@@ -173,15 +166,6 @@ internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context,
 	}
 
 	override suspend fun getDetails(manga: Manga): Manga {
-		requestMutex.withLock {
-			val currentTime = System.currentTimeMillis()
-			val timeSinceLastRequest = currentTime - lastRequestTime
-			if (timeSinceLastRequest < REQUEST_DELAY_MS) {
-				delay(REQUEST_DELAY_MS - timeSinceLastRequest)
-			}
-			lastRequestTime = System.currentTimeMillis()
-		}
-
 		val root = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
 		val author = root.selectFirst("div.mt-2:contains(Tác giả) span a")?.textOrNull()
 
@@ -224,22 +208,32 @@ internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context,
 	}
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-    val doc = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseHtml()
+		// Apply rate limiting specifically for fetching pages
+		pagesRequestMutex.withLock {
+			val currentTime = System.currentTimeMillis()
+			val timeSinceLastRequest = currentTime - lastPagesRequestTime
+			if (timeSinceLastRequest < PAGES_REQUEST_DELAY_MS) {
+				delay(PAGES_REQUEST_DELAY_MS - timeSinceLastRequest)
+			}
+			lastPagesRequestTime = System.currentTimeMillis()
+		}
 
-    return doc.select("div.text-center img").mapNotNull { img ->
-        // Lấy 'src' hoặc 'data-src' nếu 'src' rỗng, trả về null nếu cả hai đều rỗng
-        val url = img.attr("src").takeIf { it.isNotBlank() } 
-            ?: img.attr("data-src").takeIf { it.isNotBlank() }
-            ?: return@mapNotNull null
+		val doc = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseHtml()
 
-        MangaPage(
-            id = generateUid(url),
-            url = url,
-            preview = null,
-            source = source,
-        )
-    }
-}
+		return doc.select("div.text-center img").mapNotNull { img ->
+			// Lấy 'src' hoặc 'data-src' nếu 'src' rỗng, trả về null nếu cả hai đều rỗng
+			val url = img.attr("src").takeIf { it.isNotBlank() }
+				?: img.attr("data-src").takeIf { it.isNotBlank() }
+				?: return@mapNotNull null
+
+			MangaPage(
+				id = generateUid(url),
+				url = url,
+				preview = null,
+				source = source,
+			)
+		}
+	}
 
 	private suspend fun availableTags(): Set<MangaTag> {
 		val doc = webClient.httpGet("https://$domain/tim-kiem").parseHtml()
