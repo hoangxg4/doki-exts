@@ -12,12 +12,12 @@ import org.dokiteam.doki.parsers.util.*
 import java.util.*
 
 @MangaSourceParser("KURONEKO", "Kuro Neko / vi-Hentai", "vi", type = ContentType.HENTAI)
-internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.KURONEKO, 15) {
+internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.KURONEKO, 30) {
 
 	override val configKeyDomain = ConfigKey.Domain("vi-hentai.moe")
 
 	companion object {
-		private const val REQUEST_DELAY_MS = 1000L
+		private const val REQUEST_DELAY_MS = 4000L
 	}
 
 	private val requestMutex = Mutex()
@@ -224,19 +224,22 @@ internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context,
 	}
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-		val fullUrl = chapter.url.toAbsoluteUrl(domain)
-		val doc = webClient.httpGet(fullUrl).parseHtml()
+    val doc = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseHtml()
 
-		return doc.select("div.text-center img.max-w-full").mapNotNull { img ->
-			val url = img.attrOrNull("src") ?: return@mapNotNull null
-			MangaPage(
-				id = generateUid(url),
-				url = url,
-				preview = null,
-				source = source,
-			)
-		}
-	}
+    return doc.select("div.text-center img").mapNotNull { img ->
+        // Lấy 'src' hoặc 'data-src' nếu 'src' rỗng, trả về null nếu cả hai đều rỗng
+        val url = img.attr("src").takeIf { it.isNotBlank() } 
+            ?: img.attr("data-src").takeIf { it.isNotBlank() }
+            ?: return@mapNotNull null
+
+        MangaPage(
+            id = generateUid(url),
+            url = url,
+            preview = null,
+            source = source,
+        )
+    }
+}
 
 	private suspend fun availableTags(): Set<MangaTag> {
 		val doc = webClient.httpGet("https://$domain/tim-kiem").parseHtml()
