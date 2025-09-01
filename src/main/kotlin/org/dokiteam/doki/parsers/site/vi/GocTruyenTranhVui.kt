@@ -6,6 +6,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import okhttp3.Headers
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
@@ -23,7 +24,7 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
     private val apiUrl by lazy { "https://$domain/api/v2" }
 
     companion object {
-        private const val REQUEST_DELAY_MS = 350L // ~3 requests per second
+        private const val REQUEST_DELAY_MS = 350L
         private const val TOKEN_KEY = "Bearer eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJBbG9uZSBGb3JldmVyIiwiY29taWNJZHMiOltdLCJyb2xlSWQiOm51bGwsImdyb3VwSWQiOm51bGwsImFkbWluIjpmYWxzZSwicmFuayI6MCwicGVybWlzc2lvbiI6W10sImlkIjoiMDAwMTA4NDQyNSIsInRlYW0iOmZhbHNlLCJpYXQiOjE3NTM2OTgyOTAsImVtYWlsIjoibnVsbCJ9.HT080LGjvzfh6XAPmdDZhf5vhnzUhXI4GU8U6tzwlnXWjgMO4VdYL1_jsSFWd-s3NBGt-OAt89XnzaQ03iqDyA"
     }
 
@@ -48,153 +49,143 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
 
     override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
         enforceRateLimit()
-
         val url = buildString {
             append(apiUrl)
             append("/search?p=${page - 1}")
-
             if (!filter.query.isNullOrBlank()) {
                 append("&searchValue=${filter.query.urlEncoded()}")
             }
-
             val sortValue = when (order) {
                 SortOrder.POPULARITY -> "recommend"
                 SortOrder.NEWEST -> "newest"
-                else -> "recentDate" // UPDATED
+                else -> "recentDate"
             }
             append("&orders[]=$sortValue")
-
-            filter.tags.forEach {
-                append("&genres[]=${it.key}")
-            }
-
+            filter.tags.forEach { append("&genres[]=${it.key}") }
             filter.states.forEach {
                 val statusKey = when (it) {
                     MangaState.ONGOING -> "0"
                     MangaState.FINISHED -> "1"
                     else -> null
                 }
-                if (statusKey != null) {
-                    append("&status[]=$statusKey")
-                }
+                if (statusKey != null) append("&status[]=$statusKey")
             }
         }
 
-        val response = webClient.httpGet(url).bodyAsJson()
-        val data = response.getJSONObject("result").getJSONArray("data")
-        
-        return data.map { item ->
-            val mangaJson = item as JSONObject
-            val slug = mangaJson.getString("name_slug")
+        val response = webClient.httpGet(url)
+        val json = JSONObject(response.body!!.string())
+        val data = json.getJSONObject("result").getJSONArray("data")
+        val mangaList = mutableListOf<Manga>()
+        for (i in 0 until data.length()) {
+            val item = data.getJSONObject(i)
+            val slug = item.getString("name_slug")
             val mangaUrl = "/truyen/$slug"
-            Manga(
-                id = generateUid(mangaUrl),
-                title = mangaJson.getString("name"),
-                altTitles = mangaJson.optString("name_other", "")
-                    .split(",")
-                    .mapNotNull { it.trim().takeIf(String::isNotBlank) }
-                    .toSet(),
-                url = mangaUrl,
-                publicUrl = "https://$domain$mangaUrl",
-                coverUrl = "https://$domain${mangaJson.getString("image_poster")}",
-                source = source
+            mangaList.add(
+                Manga(
+                    id = generateUid(mangaUrl),
+                    title = item.getString("name"),
+                    altTitles = item.optString("name_other", "").split(",").mapNotNull { it.trim().takeIf(String::isNotBlank) }.toSet(),
+                    url = mangaUrl,
+                    publicUrl = "https://$domain$mangaUrl",
+                    rating = RATING_UNKNOWN,
+                    contentRating = null,
+                    coverUrl = "https://$domain${item.getString("image_poster")}",
+                    tags = emptySet(),
+                    state = null,
+                    authors = emptySet(),
+                    source = source
+                )
             )
         }
+        return mangaList
     }
 
     override suspend fun getDetails(manga: Manga): Manga {
         return coroutineScope {
-            val slug = manga.url.substringAfterLast("/")
-
             val detailsJob = async {
                 enforceRateLimit()
-                val doc = webClient.httpGet(manga.publicUrl).parseHtml()
-                manga.copy(
-                    title = doc.selectFirst(".v-card-title")?.text().orEmpty(),
-                    tags = doc.select(".group-content > .v-chip-link").mapToSet {
-                        MangaTag(it.text(), it.text(), source)
-                    },
-                    coverUrl = doc.selectFirst("img.image")?.absUrl("src"),
-                    state = when (doc.selectFirst(".mb-1:contains(Trạng thái:) span")?.text()) {
-                        "Đang thực hiện" -> MangaState.ONGOING
-                        "Hoàn thành" -> MangaState.FINISHED
-                        else -> null
-                    },
-                    authors = setOfNotNull(doc.selectFirst(".mb-1:contains(Tác giả:) span")?.text()),
-                    description = doc.selectFirst(".v-card-text")?.text()
-                )
+                webClient.httpGet(manga.publicUrl).body!!.string()
             }
+
+            val html = detailsJob.await()
+            val doc = html.asJsoup()
+            val comicId = html.substringAfter("comic = {id:\"").substringBefore("\"")
 
             val chaptersJob = async {
                 enforceRateLimit()
-                // We need the comicId, which is not in the manga object. We have to get it from the HTML page.
-                // This is inefficient, but required by the site's structure.
-                val mangaPageHtml = webClient.httpGet(manga.publicUrl).bodyAs<String>()
-                val comicId = mangaPageHtml.substringAfter("comic = {id:\"").substringBefore("\"")
-
                 val url = "https://$domain/api/comic/$comicId/chapter?limit=-1"
-                val response = webClient.httpGet(url).bodyAsJson()
-                val chaptersJson = response.getJSONObject("result").getJSONArray("chapters")
-                
-                chaptersJson.map { item ->
-                    val chapterJson = item as JSONObject
-                    val number = chapterJson.getString("number")
+                val json = JSONObject(webClient.httpGet(url).body!!.string())
+                val chaptersJson = json.getJSONObject("result").getJSONArray("chapters")
+                val chapterList = mutableListOf<MangaChapter>()
+                val slug = manga.url.substringAfterLast("/")
+                for (i in 0 until chaptersJson.length()) {
+                    val item = chaptersJson.getJSONObject(i)
+                    val number = item.getString("number")
                     val chapterUrl = "/truyen/$slug/chuong-$number"
-                    MangaChapter(
-                        id = generateUid(chapterUrl),
-                        title = chapterJson.getString("name"),
-                        url = chapterUrl,
-                        number = number.toFloatOrNull() ?: -1f,
-                        uploadDate = runCatching {
-                            SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ENGLISH)
-                                .parse(chapterJson.getString("created_at"))?.time
-                        }.getOrNull(),
-                        volume = 0,
-                        scanlator = null,
-                        branch = null,
-                        source = source
+                    chapterList.add(
+                        MangaChapter(
+                            id = generateUid(chapterUrl),
+                            title = item.getString("name"),
+                            number = number.toFloatOrNull() ?: -1f,
+                            volume = 0,
+                            url = chapterUrl,
+                            scanlator = null,
+                            uploadDate = runCatching { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ENGLISH).parse(item.getString("created_at"))?.time }.getOrNull(),
+                            branch = null,
+                            source = source
+                        )
                     )
                 }
+                chapterList
             }
-            
-            val (detailedManga, chapters) = awaitAll(detailsJob, chaptersJob)
-            (detailedManga as Manga).copy(chapters = chapters as List<MangaChapter>)
+
+            manga.copy(
+                title = doc.selectFirst(".v-card-title")?.text().orEmpty(),
+                tags = doc.select(".group-content > .v-chip-link").mapToSet { MangaTag(it.text(), it.text(), source) },
+                coverUrl = doc.selectFirst("img.image")?.absUrl("src"),
+                state = when (doc.selectFirst(".mb-1:contains(Trạng thái:) span")?.text()) {
+                    "Đang thực hiện" -> MangaState.ONGOING
+                    "Hoàn thành" -> MangaState.FINISHED
+                    else -> null
+                },
+                authors = setOfNotNull(doc.selectFirst(".mb-1:contains(Tác giả:) span")?.text()),
+                description = doc.selectFirst(".v-card-text")?.text(),
+                chapters = chaptersJob.await()
+            )
         }
     }
 
     override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
         enforceRateLimit()
-        
         val doc = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseHtml()
-        val chapterJsonRaw = doc.selectFirst("script:contains(chapterJson:)")
-            ?.data()
-            ?.substringAfter("chapterJson: `")
-            ?.substringBefore("`")
+        val chapterJsonRaw = doc.selectFirst("script:contains(chapterJson:)")?.data()?.substringAfter("chapterJson: `")?.substringBefore("`")
 
-        val imageUrls: List<String> = if (chapterJsonRaw != null && chapterJsonRaw.isNotBlank()) {
-            JSONObject(chapterJsonRaw).getJSONObject("body").getJSONObject("result").getJSONArray("data").map { it.toString() }
+        val imageUrls: List<String>
+        if (chapterJsonRaw != null && chapterJsonRaw.isNotBlank()) {
+            val json = JSONObject(chapterJsonRaw)
+            val data = json.getJSONObject("body").getJSONObject("result").getJSONArray("data")
+            imageUrls = (0 until data.length()).map { data.getString(it) }
         } else {
-            // Auth required
             val html = doc.html()
             val comicId = html.substringAfter("comic = {id:\"").substringBefore("\"")
             val (slug, chapterNumRaw) = chapter.url.substringAfter("/truyen/").split("/")
-            
             val formBody = mapOf(
                 "comicId" to comicId,
                 "chapterNumber" to chapterNumRaw.substringAfter("chuong-"),
                 "nameEn" to slug
             )
+            val authHeaders = Headers.Builder()
+                .add("X-Requested-With", "XMLHttpRequest")
+                .add("Authorization", TOKEN_KEY)
+                .add("Referer", chapter.url.toAbsoluteUrl(domain))
+                .build()
 
-            val authHeaders = mapOf(
-                "X-Requested-With" to "XMLHttpRequest",
-                "Authorization" to TOKEN_KEY,
-                "Referer" to chapter.url.toAbsoluteUrl(domain)
-            )
-
-            val responseJson = webClient.httpPost("https://$domain/api/chapter/auth", form = formBody, extraHeaders = authHeaders).bodyAsJson()
-            responseJson.getJSONObject("result").getJSONArray("data").map { it.toString() }
+            val response = webClient.httpPost("https://$domain/api/chapter/auth", form = formBody, extraHeaders = authHeaders)
+            val json = JSONObject(response.body!!.string())
+            val data = json.getJSONObject("result").getJSONArray("data")
+            imageUrls = (0 until data.length()).map { data.getString(it) }
         }
-        
+
         return imageUrls.map { url ->
             val finalUrl = if (url.startsWith("/image/")) "https://$domain$url" else url
             MangaPage(
@@ -216,8 +207,7 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
             lastRequestTime = System.currentTimeMillis()
         }
     }
-    
-    // Static data
+
     private val GTT_GENRES = listOf(
         "Action" to "2", "Adult" to "3", "Adventure" to "4", "Anime" to "5", "Chuyển Sinh" to "6",
         "Cổ Đại" to "7", "Comedy" to "8", "Comic" to "9", "Cooking" to "10", "Detective" to "11",
