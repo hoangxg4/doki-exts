@@ -119,7 +119,7 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
                     "END" -> MangaState.FINISHED
                     else -> null
                 },
-                authors = emptySet(),
+                authors = setOf(item.optString("author", "Updating")),
                 source = source
             )
         }
@@ -128,7 +128,7 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
     override suspend fun getDetails(manga: Manga): Manga {
         enforceRateLimit()
         val responseBody = webClient.httpGet(manga.publicUrl).body!!.string()
-        val doc = Jsoup.parse(responseBody) // SỬA LỖI: Dùng Jsoup.parse()
+        val doc = Jsoup.parse(responseBody)
         val comicId = responseBody.substringAfter("comic = {id:\"").substringBefore("\"")
 
         enforceRateLimit()
@@ -156,7 +156,6 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
 
         val nameToIdMap = GTT_GENRES.associate { (name, id) -> name to id }
         val tagElements = doc.select(".group-content > .v-chip-link")
-        // SỬA LỖI: Viết lại logic parse tag một cách tường minh
         val tags = mutableSetOf<MangaTag>()
         for (element in tagElements) {
             val tagName = element.text()
@@ -186,7 +185,7 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
             ?: throw Exception("Không tìm thấy script chứa thông tin chapter")
 
         val chapterJsonRaw = scriptContent.substringAfter("chapterJson: `").substringBefore("`")
-        
+
         if (chapterJsonRaw.isBlank()) {
             throw Exception("Trang web không nhúng sẵn danh sách ảnh. Có thể cần cập nhật lại parser.")
         }
@@ -194,7 +193,7 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
         val json = JSONObject(chapterJsonRaw)
         val data = json.getJSONObject("body").getJSONObject("result").getJSONArray("data")
         val imageUrls = List(data.length()) { i -> data.getString(i) }
-        
+
         return imageUrls.map { url ->
             val finalUrl = if (url.startsWith("/image/")) "https://$domain$url" else url
             MangaPage(
