@@ -20,8 +20,8 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
 
     override val configKeyDomain = ConfigKey.Domain("goctruyentranhvui17.com")
     private val apiUrl by lazy { "https://$domain/api/v2" }
-    // FIX: Image domain is different from the main domain
-    private val imageDomain = "https://goctruyentranh2.pro"
+    // Domain chứa ảnh có thể khác, nhưng URL trả về từ API/JSON đã là URL đầy đủ
+    // private val imageDomain = "https://goctruyentranh2.pro" // Không cần thiết nếu URL đã đầy đủ
 
     companion object {
         private const val REQUEST_DELAY_MS = 350L
@@ -48,7 +48,7 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
 
     override val filterCapabilities = MangaListFilterCapabilities(
         isSearchSupported = true,
-        isMultipleTagsSupported = true
+        isMultipleTagsSupported = true,
     )
 
     override suspend fun getFilterOptions() = MangaListFilterOptions(
@@ -107,7 +107,7 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
                 id = generateUid(comicId),
                 title = item.getString("name"),
                 altTitles = item.optString("otherName", "").split(",").mapNotNull { it.trim().takeIf(String::isNotBlank) }.toSet(),
-                url = comicId,
+                url = "$comicId:$slug", // Store both id and slug, separated by ':'
                 publicUrl = "https://$domain$mangaUrl",
                 rating = item.optDouble("evaluationScore", 0.0).toFloat(),
                 contentRating = null,
@@ -125,8 +125,8 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
     }
 
     override suspend fun getDetails(manga: Manga): Manga {
-        val comicId = manga.url
-        val slug = manga.publicUrl.substringAfterLast("/")
+        val comicId = manga.url.substringBefore(':')
+        val slug = manga.url.substringAfter(':')
 
         val chapters = try {
             enforceRateLimit()
@@ -153,7 +153,7 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
             }
         } catch (e: Exception) {
             emptyList()
-        }.reversed() // FIX: Reverse chapter list to show from oldest to newest
+        }.reversed()
 
         enforceRateLimit()
         val doc = webClient.httpGet(manga.publicUrl).parseHtml()
@@ -181,24 +181,39 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
 
     override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
         enforceRateLimit()
-        val responseBody = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).body?.string() 
+        val responseBody = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).body?.string()
             ?: throw Exception("Response body is null for chapter page")
 
-        val scriptContent = Jsoup.parse(responseBody).selectFirst("script:contains(chapterJson:)")?.data()
-            ?: throw Exception("Could not find script with chapterJson")
-        
-        val chapterJsonRaw = scriptContent.substringAfter("chapterJson: `", "").substringBefore("`", "")
-        if (chapterJsonRaw.isBlank()) {
-            throw Exception("chapterJson is blank, cannot load images.")
+        val chapterJsonRaw = responseBody.substringAfter("chapterJson: `", "").substringBefore("`", "")
+
+        val imageUrls: List<String>
+        if (chapterJsonRaw.isNotBlank()) {
+            val json = JSONObject(chapterJsonRaw)
+            val data = json.getJSONObject("body").getJSONObject("result").getJSONArray("data")
+            imageUrls = List(data.length()) { i -> data.getString(i) }
+        } else {
+            // Fallback: Call the authenticated API
+            val comicId = responseBody.substringAfter("comic = {id:\"", "").substringBefore("\"", "")
+            val chapterNumber = chapter.url.substringAfterLast("chuong-")
+            val nameEn = chapter.url.substringAfter("/truyen/").substringBefore("/chuong-")
+
+            if (comicId.isBlank()) {
+                throw Exception("Cannot find comicId in HTML for fallback image request")
+            }
+
+            val formBody = mapOf(
+                "comicId" to comicId,
+                "chapterNumber" to chapterNumber,
+                "nameEn" to nameEn
+            )
+            val authApiUrl = "$apiUrl/chapter/auth".toHttpUrl()
+            val authResponse = webClient.httpPost(url = authApiUrl, form = formBody, extraHeaders = apiHeaders).parseJson()
+            val data = authResponse.getJSONObject("result").getJSONArray("data")
+            imageUrls = List(data.length()) { i -> data.getString(i) }
         }
 
-        val json = JSONObject(chapterJsonRaw)
-        val data = json.getJSONObject("body").getJSONObject("result").getJSONArray("data")
-        val imageUrls = List(data.length()) { i -> data.getString(i) }
-
         return imageUrls.map { url ->
-            // FIX: Use the correct image domain
-            val finalUrl = if (url.startsWith("/image/")) "$imageDomain$url" else url
+            val finalUrl = if (url.startsWith("/image/")) "https://$domain$url" else url
             MangaPage(id = generateUid(finalUrl), url = finalUrl, preview = null, source = source)
         }
     }
@@ -214,7 +229,6 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
         }
     }
 
-    // UPDATE: Comprehensive genre list with aliases for better matching
     private val GTT_GENRES = listOf(
         "Action" to "ACT", "Hành Động" to "ACT",
         "Adult" to "ADU", "Người Lớn" to "ADU",
