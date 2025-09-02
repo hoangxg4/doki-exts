@@ -1,5 +1,6 @@
 package org.dokiteam.doki.parsers.site.vi
 
+import okhttp3.Headers
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
@@ -198,22 +199,29 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
 		val fullUrl = chapter.url.toAbsoluteUrl(domain)
 		val doc = webClient.httpGet(fullUrl).parseHtml()
-		return doc.select("div.text-center div.lazy")
-			.mapNotNull { div ->
-				val url = div.attr("data-src")
-				if (url.endsWith(".jpg", ignoreCase = true) ||
-					url.endsWith(".png", ignoreCase = true)
-				) {
-					MangaPage(
-						id = generateUid(url),
-						url = url,
-						preview = null,
-						source = source,
-					)
-				} else {
-					throw Exception("Bạn cần phải nạp LXCoin mua code VIP để xem nội dung này trên trang Web!")
-				}
-			}
+
+		// Trang web chỉ yêu cầu header 'Referer' để chống hotlink.
+		val imageHeaders = Headers.Builder()
+			.add("Referer", "https://$domain/")
+			.build()
+
+		// Lấy tất cả các thẻ div chứa link ảnh
+		val imageUrls = doc.select("div.text-center div.lazy[data-src]")
+		if (imageUrls.isEmpty()) {
+			// Giữ lại thông báo lỗi này vì nó vẫn có thể đúng trong trường hợp truyện có phí.
+			throw Exception("Không tìm thấy ảnh nào. Có thể cần mua LXCoin để xem trên web.")
+		}
+
+		return imageUrls.map { div ->
+			val url = div.attr("data-src")
+			MangaPage(
+				id = generateUid(url),
+				url = url,
+				preview = null,
+				source = source,
+				headers = imageHeaders // Thêm header vào mỗi request tải ảnh
+			)
+		}
 	}
 
 	private suspend fun availableTags(): Set<MangaTag> {
