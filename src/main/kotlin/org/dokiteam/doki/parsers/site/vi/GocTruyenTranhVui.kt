@@ -57,10 +57,9 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
     )
 
     override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
-        enforceRateLimit()
-        val url = buildString {
-            append(apiUrl)
-            append("/search?p=${page - 1}")
+        init {
+		setFirstPage(0)
+	    }
             if (!filter.query.isNullOrBlank()) {
                 append("&searchValue=${filter.query.urlEncoded()}")
             }
