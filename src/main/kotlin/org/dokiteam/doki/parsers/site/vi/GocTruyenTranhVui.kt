@@ -50,10 +50,10 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
         isMultipleTagsSupported = true
     )
 
-    private val genreNameToCodeMap by lazy { GTT_GENRES.associate { it.first to it.second } }
-
     override suspend fun getFilterOptions() = MangaListFilterOptions(
-        availableTags = GTT_GENRES.mapToSet { MangaTag(key = it.first, title = it.second, source = source) },
+        // FIX: Reverted to the correct format. Key = API Code, Title = Display Name.
+        // The app UI bug of displaying the key instead of the title is not fixable from the parser.
+        availableTags = GTT_GENRES.mapToSet { MangaTag(key = it.second, title = it.first, source = source) },
         availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED)
     )
 
@@ -74,11 +74,9 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
             }
             append("&orders%5B%5D=$sortValue")
 
+            // FIX: The key received from the filter is now the correct API code. No conversion needed.
             filter.tags.forEach {
-                val genreCode = genreNameToCodeMap[it.key]
-                if (genreCode != null) {
-                    append("&categories%5B%5D=$genreCode")
-                }
+                append("&categories%5B%5D=${it.key}")
             }
 
             filter.states.forEach {
@@ -100,19 +98,14 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
             val comicId = item.getString("id")
             val slug = item.getString("nameEn")
             val mangaUrl = "/truyen/$slug"
-
-            // FIX: Correctly parse category names and find matching tags
-            val categoryNames = item.optJSONArray("category")
-            val tags = if (categoryNames != null) {
-                (0 until categoryNames.length()).mapNotNullTo(mutableSetOf()) { index ->
-                    val tagName = categoryNames.getString(index)
+            val tags = item.optJSONArray("category")?.let { arr ->
+                (0 until arr.length()).mapNotNullTo(mutableSetOf()) { index ->
+                    val tagName = arr.getString(index)
                     GTT_GENRES.find { it.first == tagName }?.let { genrePair ->
-                        MangaTag(key = genrePair.first, title = genrePair.second, source = source)
+                        MangaTag(key = genrePair.second, title = genrePair.first, source = source)
                     }
                 }
-            } else {
-                emptySet()
-            }
+            } ?: emptySet()
 
             Manga(
                 id = generateUid(comicId),
@@ -149,8 +142,8 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
                 val item = chaptersData.getJSONObject(i)
                 val number = item.getString("numberChapter")
                 val name = item.getString("name")
-                val chapterUrl = "/truyen/$slug/chuong-$number"
-                // FIX: Add missing parameters
+                // FIX: Embed comicId in the chapter URL fragment for getPages to use.
+                val chapterUrl = "/truyen/$slug/chuong-$number#$comicId"
                 MangaChapter(
                     id = generateUid(chapterUrl),
                     title = if (name != "N/A" && name.isNotBlank()) name else "Chapter $number",
@@ -171,7 +164,7 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
         val doc = webClient.httpGet(manga.publicUrl).parseHtml()
         val tags = doc.select(".group-content > .v-chip-link").mapNotNullTo(mutableSetOf()) { el ->
             GTT_GENRES.find { it.first == el.text() }?.let {
-                MangaTag(key = it.first, title = it.second, source = source)
+                MangaTag(key = it.second, title = it.first, source = source)
             }
         }
 
@@ -203,18 +196,18 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
             val data = json.getJSONObject("body").getJSONObject("result").getJSONArray("data")
             imageUrls = List(data.length()) { i -> data.getString(i) }
         } else {
-            val comicId = responseBody.substringAfter("comic = {id:\"", "").substringBefore("\"", "")
-            val chapterNumber = chapter.url.substringAfterLast("chuong-")
-            val nameEn = chapter.url.substringAfter("/truyen/").substringBefore("/chuong-")
+            // FIX: Get comicId reliably from the chapter URL fragment.
+            val comicId = chapter.url.substringAfter('#', "")
+            if (comicId.isBlank()) throw Exception("Cannot find comicId in chapter URL fragment for fallback image request")
 
-            if (comicId.isBlank()) throw Exception("Cannot find comicId for fallback image request")
+            val chapterNumber = chapter.url.substringAfterLast("chuong-").substringBefore("#")
+            val nameEn = chapter.url.substringAfter("/truyen/").substringBefore("/chuong-")
 
             val formBody = mapOf(
                 "comicId" to comicId,
                 "chapterNumber" to chapterNumber,
                 "nameEn" to nameEn
             )
-            // FIX: Correct parameter name for httpPost (formBody -> form)
             val authApiUrl = "$apiUrl/chapter/auth".toHttpUrl()
             val authResponse = webClient.httpPost(url = authApiUrl, form = formBody, extraHeaders = apiHeaders).parseJson()
             val data = authResponse.getJSONObject("result").getJSONArray("data")
@@ -223,7 +216,6 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
 
         return imageUrls.map { url ->
             val finalUrl = if (url.startsWith("/image/")) "https://$domain$url" else url
-            // FIX: Add missing 'preview' parameter
             MangaPage(id = generateUid(finalUrl), url = finalUrl, preview = null, source = source)
         }
     }
