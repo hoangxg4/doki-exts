@@ -18,7 +18,11 @@ import java.util.*
 @MangaSourceParser("GOCTRUYENTRANHVUI", "Goc Truyen Tranh Vui", "vi")
 internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.GOCTRUYENTRANHVUI, 50) {
 
-    override val configKeyDomain = ConfigKey.Domain("goctruyentranhvui17.com")
+    init {
+        setFirstPage(0)
+	}
+	
+	override val configKeyDomain = ConfigKey.Domain("goctruyentranhvui17.com")
     private val apiUrl by lazy { "https://$domain/api/v2" }
     // Domain chứa ảnh có thể khác, nhưng URL trả về từ API/JSON đã là URL đầy đủ
     // private val imageDomain = "https://goctruyentranh2.pro" // Không cần thiết nếu URL đã đầy đủ
@@ -57,9 +61,11 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
     )
 
     override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
-        init {
-		setFirstPage(0)
-	    }
+        enforceRateLimit()
+    val url = buildString {
+        append(apiUrl)
+        // FIX: Dùng trực tiếp `page` vì đã setFirstPage(0)
+        append("/search?p=$page")
             if (!filter.query.isNullOrBlank()) {
                 append("&searchValue=${filter.query.urlEncoded()}")
             }
