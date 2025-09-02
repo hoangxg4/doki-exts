@@ -1,6 +1,5 @@
 package org.dokiteam.doki.parsers.site.vi
 
-import okhttp3.Headers
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
@@ -200,12 +199,10 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 		val fullUrl = chapter.url.toAbsoluteUrl(domain)
 		val doc = webClient.httpGet(fullUrl).parseHtml()
 
-		// Trang web chỉ yêu cầu header 'Referer' để chống hotlink.
-		val imageHeaders = Headers.Builder()
-			.add("Referer", "https://$domain/")
-			.build()
+		// Tạo một chuỗi JSON chứa thông tin header cần thiết.
+		// Dấu #$# là ký tự phân cách đặc biệt để app nhận diện.
+		val headersJson = """{"Referer":"https://""" + domain + """/"}"""
 
-		// Lấy tất cả các thẻ div chứa link ảnh
 		val imageUrls = doc.select("div.text-center div.lazy[data-src]")
 		if (imageUrls.isEmpty()) {
 			// Giữ lại thông báo lỗi này vì nó vẫn có thể đúng trong trường hợp truyện có phí.
@@ -214,12 +211,14 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 
 		return imageUrls.map { div ->
 			val url = div.attr("data-src")
+			// Nối URL gốc với chuỗi header JSON bằng ký tự phân cách
+			val urlWithHeaders = "$url #$# $headersJson"
+
 			MangaPage(
 				id = generateUid(url),
-				url = url,
+				url = urlWithHeaders, // Sử dụng URL đã chứa header
 				preview = null,
-				source = source,
-				headers = imageHeaders // Thêm header vào mỗi request tải ảnh
+				source = source
 			)
 		}
 	}
