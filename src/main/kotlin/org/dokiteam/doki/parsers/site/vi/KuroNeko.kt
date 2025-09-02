@@ -21,6 +21,7 @@ internal class KuroNeko(context: MangaLoaderContext) : PagedMangaParser(context,
 		private const val PAGES_REQUEST_DELAY_MS = 5000L
 		private val pagesRequestMutex = Mutex()
 		private var lastPagesRequestTime = 0L
+		const val PATH = "AxsAEQdJWk4YDUkHDgcVEwxaBQoHShIXHwYbD1seHAwHOwAKCAYFFw==\n"
 	}
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
