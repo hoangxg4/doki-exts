@@ -38,7 +38,6 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
             .build()
     }
 
-    // FIX: Reverted to only include supported SortOrder types
     override val availableSortOrders: Set<SortOrder> = EnumSet.of(
         SortOrder.UPDATED,
         SortOrder.POPULARITY,
@@ -51,9 +50,13 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
         isMultipleTagsSupported = true
     )
 
+    // A map to convert genre names back to API codes for filtering
+    private val genreNameToCodeMap by lazy { GTT_GENRES.associate { it.first to it.second } }
+
     override suspend fun getFilterOptions() = MangaListFilterOptions(
-        availableTags = GTT_GENRES.mapToSet { MangaTag(it.second, it.first, source) },
-        // FIX: Reverted to only include supported MangaState types
+        // FIX: Swap key and title to fix display and filtering issues in the app.
+        // The app seems to display the 'key', so we put the full name there.
+        availableTags = GTT_GENRES.mapToSet { MangaTag(key = it.first, title = it.second, source = source) },
         availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED)
     )
 
@@ -66,7 +69,6 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
                 append("&searchValue=${filter.query.urlEncoded()}")
             }
 
-            // FIX: Removed unsupported SortOrder.FOLLOWERS
             val sortValue = when (order) {
                 SortOrder.POPULARITY -> "viewCount"
                 SortOrder.NEWEST -> "createdAt"
@@ -75,9 +77,14 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
             }
             append("&orders%5B%5D=$sortValue")
 
-            filter.tags.forEach { append("&categories%5B%5D=${it.key}") }
+            // FIX: Convert the full genre name (received in filter.tags.key) back to its code for the API call.
+            filter.tags.forEach {
+                val genreCode = genreNameToCodeMap[it.key]
+                if (genreCode != null) {
+                    append("&categories%5B%5D=$genreCode")
+                }
+            }
 
-            // FIX: Removed unsupported MangaState mappings
             filter.states.forEach {
                 val statusKey = when (it) {
                     MangaState.ONGOING -> "PRG"
@@ -94,22 +101,17 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
 
         return List(data.length()) { i ->
             val item = data.getJSONObject(i)
-
             val comicId = item.getString("id")
             val slug = item.getString("nameEn")
             val mangaUrl = "/truyen/$slug"
-
-            val categoryNames = item.optJSONArray("category")?.let { arr ->
-                (0 until arr.length()).map { arr.getString(it) }
-            } ?: emptyList()
-
-            val categoryCodes = item.optJSONArray("categoryCode")?.let { arr ->
-                (0 until arr.length()).map { arr.getString(it) }
-            } ?: emptyList()
-
-            val tags = categoryNames.zip(categoryCodes).map { (name, code) ->
-                MangaTag(key = code, title = name, source = source)
-            }.toSet()
+            val tags = item.optJSONArray("category")?.let { arr ->
+                (0 until arr.length()).mapNotNullTo(mutableSetOf()) { tagName ->
+                    // Find the corresponding tag from our full list to create the MangaTag object
+                    GTT_GENRES.find { it.first == tagName }?.let {
+                        MangaTag(key = it.first, title = it.second, source = source)
+                    }
+                }
+            } ?: emptySet()
 
             Manga(
                 id = generateUid(comicId),
@@ -121,7 +123,6 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
                 contentRating = null,
                 coverUrl = "https://$domain${item.getString("photo")}",
                 tags = tags,
-                // FIX: Removed unsupported state mappings
                 state = when (item.optString("statusCode")) {
                     "PRG" -> MangaState.ONGOING
                     "END" -> MangaState.FINISHED
@@ -135,14 +136,13 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
 
     override suspend fun getDetails(manga: Manga): Manga {
         val comicId = manga.url
+        val slug = manga.publicUrl.substringAfterLast("/")
 
         val chapters = try {
             enforceRateLimit()
             val chapterApiUrl = "https://$domain/api/comic/$comicId/chapter?limit=-1"
             val chapterJson = webClient.httpGet(chapterApiUrl, extraHeaders = apiHeaders).parseJson()
             val chaptersData = chapterJson.getJSONObject("result").getJSONArray("chapters")
-
-            val slug = manga.publicUrl.substringAfterLast("/")
 
             List(chaptersData.length()) { i ->
                 val item = chaptersData.getJSONObject(i)
@@ -153,11 +153,8 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
                     id = generateUid(chapterUrl),
                     title = if (name != "N/A" && name.isNotBlank()) name else "Chapter $number",
                     number = number.toFloatOrNull() ?: -1f,
-                    volume = 0,
                     url = chapterUrl,
-                    scanlator = null,
                     uploadDate = item.optLong("updateTime", 0L),
-                    branch = null,
                     source = source
                 )
             }
@@ -167,21 +164,16 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
 
         enforceRateLimit()
         val doc = webClient.httpGet(manga.publicUrl).parseHtml()
-
-        val nameToIdMap = GTT_GENRES.associate { (name, id) -> name to id }
-        val tagElements = doc.select(".group-content > .v-chip-link")
-        val tags = mutableSetOf<MangaTag>()
-        for (element in tagElements) {
-            val tagName = element.text()
-            val tagId = nameToIdMap[tagName] ?: tagName
-            tags.add(MangaTag(key = tagId, title = tagName, source = source))
+        val tags = doc.select(".group-content > .v-chip-link").mapNotNullTo(mutableSetOf()) { el ->
+            GTT_GENRES.find { it.first == el.text() }?.let {
+                MangaTag(key = it.first, title = it.second, source = source)
+            }
         }
 
         return manga.copy(
             title = doc.selectFirst(".v-card-title")?.text().orEmpty(),
             tags = tags.ifEmpty { manga.tags },
             coverUrl = doc.selectFirst("img.image")?.absUrl("src"),
-            // FIX: Removed unsupported state mappings
             state = when (doc.selectFirst(".mb-1:contains(Trạng thái:) span")?.text()) {
                 "Đang thực hiện" -> MangaState.ONGOING
                 "Hoàn thành" -> MangaState.FINISHED
@@ -195,28 +187,37 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
 
     override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
         enforceRateLimit()
-        val doc = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseHtml()
-        val scriptContent = doc.selectFirst("script:contains(chapterJson:)")?.data()
-            ?: throw Exception("Không tìm thấy script chứa thông tin chapter")
+        val response = webClient.httpGet(chapter.url.toAbsoluteUrl(domain))
+        val responseBody = response.body?.string() ?: throw Exception("Response body is null")
+        
+        val chapterJsonRaw = responseBody.substringAfter("chapterJson: `", "").substringBefore("`", "")
 
-        val chapterJsonRaw = scriptContent.substringAfter("chapterJson: `").substringBefore("`")
+        val imageUrls: List<String>
+        if (chapterJsonRaw.isNotBlank()) {
+            val json = JSONObject(chapterJsonRaw)
+            val data = json.getJSONObject("body").getJSONObject("result").getJSONArray("data")
+            imageUrls = List(data.length()) { i -> data.getString(i) }
+        } else {
+            // FALLBACK: Image list is empty, call authenticated API
+            val comicId = responseBody.substringAfter("comic = {id:\"", "").substringBefore("\"", "")
+            val chapterNumber = chapter.url.substringAfterLast("chuong-")
+            val nameEn = chapter.url.substringAfter("/truyen/").substringBefore("/chuong-")
 
-        if (chapterJsonRaw.isBlank()) {
-            throw Exception("Trang web không nhúng sẵn danh sách ảnh. Có thể cần cập nhật lại parser.")
+            if (comicId.isBlank()) throw Exception("Cannot find comicId for fallback image request")
+
+            val formBody = mapOf(
+                "comicId" to comicId,
+                "chapterNumber" to chapterNumber,
+                "nameEn" to nameEn
+            )
+            val authResponse = webClient.httpPost("$apiUrl/chapter/auth", extraHeaders = apiHeaders, formBody = formBody).parseJson()
+            val data = authResponse.getJSONObject("result").getJSONArray("data")
+            imageUrls = List(data.length()) { i -> data.getString(i) }
         }
-
-        val json = JSONObject(chapterJsonRaw)
-        val data = json.getJSONObject("body").getJSONObject("result").getJSONArray("data")
-        val imageUrls = List(data.length()) { i -> data.getString(i) }
 
         return imageUrls.map { url ->
             val finalUrl = if (url.startsWith("/image/")) "https://$domain$url" else url
-            MangaPage(
-                id = generateUid(finalUrl),
-                url = finalUrl,
-                preview = null,
-                source = source
-            )
+            MangaPage(id = generateUid(finalUrl), url = finalUrl, source = source)
         }
     }
 
