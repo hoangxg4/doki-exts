@@ -11,6 +11,7 @@ import org.dokiteam.doki.parsers.config.ConfigKey
 import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
+import org.json.JSONArray
 import org.json.JSONObject
 import org.jsoup.Jsoup
 import java.util.*
@@ -129,30 +130,36 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
         enforceRateLimit()
         val responseBody = webClient.httpGet(manga.publicUrl).body!!.string()
         val doc = Jsoup.parse(responseBody)
-        val comicId = responseBody.substringAfter("comic = {id:\"").substringBefore("\"")
 
-        enforceRateLimit()
-        val chapterApiUrl = "https://$domain/api/comic/$comicId/chapter?limit=-1"
-        val chapterJson = webClient.httpGet(chapterApiUrl, extraHeaders = apiHeaders).parseJson()
-        val chaptersData = chapterJson.getJSONObject("result").getJSONArray("chapters")
-        val slug = manga.url.substringAfterLast("/")
-        val chapters = List(chaptersData.length()) { i ->
-            val item = chaptersData.getJSONObject(i)
-            val number = item.getString("numberChapter")
-            val name = item.getString("name")
-            val chapterUrl = "/truyen/$slug/chuong-$number"
-            MangaChapter(
-                id = generateUid(chapterUrl),
-                title = if (name != "N/A") name else "Chapter $number",
-                number = number.toFloatOrNull() ?: -1f,
-                volume = 0,
-                url = chapterUrl,
-                scanlator = null,
-                uploadDate = item.optLong("updateTime", 0L),
-                branch = null,
-                source = source
-            )
+        // CHANGE START: Extract chapters from embedded JSON in the HTML
+        // This is more efficient as it avoids a second API call.
+        val chapters = try {
+            val chaptersJsonRaw = responseBody.substringAfter("\"chapters\":").substringBefore("}],\"isDone\"") + "}]"
+            val chaptersData = JSONArray(chaptersJsonRaw)
+            val slug = manga.url.substringAfterLast("/")
+
+            List(chaptersData.length()) { i ->
+                val item = chaptersData.getJSONObject(i)
+                val number = item.getString("numberChapter")
+                val name = item.getString("name")
+                val chapterUrl = "/truyen/$slug/chuong-$number"
+                MangaChapter(
+                    id = generateUid(chapterUrl),
+                    title = if (name != "N/A" && name.isNotBlank()) name else "Chapter $number",
+                    number = number.toFloatOrNull() ?: -1f,
+                    volume = 0,
+                    url = chapterUrl,
+                    scanlator = null,
+                    uploadDate = item.optLong("updateTime", 0L),
+                    branch = null,
+                    source = source
+                )
+            }
+        } catch (e: Exception) {
+            // Fallback or error logging
+            emptyList<MangaChapter>()
         }
+        // CHANGE END
 
         val nameToIdMap = GTT_GENRES.associate { (name, id) -> name to id }
         val tagElements = doc.select(".group-content > .v-chip-link")
