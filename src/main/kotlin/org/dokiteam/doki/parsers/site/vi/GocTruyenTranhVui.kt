@@ -24,7 +24,7 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
 
     companion object {
         private const val REQUEST_DELAY_MS = 350L
-        private const val TOKEN_KEY = "Bearer eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJBbG9uZSBGb3JldmVyIiwiY29taWNJZHMiOltdLCJyb2xlSWQiOm51bGwsImdyb3VwSWQiOm51bGwsImFkbWluIjpmYWxzZSwicmFuayI6MCwicGVybWlzc2lvbiI6W10sImlkIjoiMDAwMTA4NDQyNSIsInRlYW0iOmZhbHNlLCJpYXQiOjE3NTM2OTgyOTAsImVtYWlsIjoibnVsbCJ9.HT080LGjvzfh6XAPmdDZhf5vhnzUhXI4GU8U6tzwlnXWjgMO4VdYL1_jsSFWd-s3NBGt-OAt89XnzaQ03iqDyA"
+        private const val TOKEN_KEY = "Bearer eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJBbG9uZSBGb3JldmVyIiwiY29taWNJZHMiOltdLCJyb2xlSWQiOm51bGwsImdyb3VwSWQiOm51bGwsImFkbWluIjpmYWxzZSwicmFuayI6MCwicGVybWlzc2lvbiI6W10sImlkIjoiMDAwMTA4NDQyNSIsInRlYW0iOmZhbHNlLCJpYXQiOjE3NTM2OTgyOTAsImVtYWlsIjoibnVsbCJ9.HT080LGjvzfh6XAPmdDZhf5vhnzUhXI4GU8U6tzwlnXWjgMO4VdYL1jsSFWd-s3NBGt-OAt89XnzaQ03iqDyA"
     }
 
     private val requestMutex = Mutex()
@@ -38,11 +38,13 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
             .build()
     }
 
+    // UPDATE: Add FOLLOWERS to sort options
     override val availableSortOrders: Set<SortOrder> = EnumSet.of(
         SortOrder.UPDATED,
         SortOrder.POPULARITY,
         SortOrder.NEWEST,
-        SortOrder.RATING
+        SortOrder.RATING,
+        SortOrder.FOLLOWERS
     )
 
     override val filterCapabilities = MangaListFilterCapabilities(
@@ -52,7 +54,13 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
 
     override suspend fun getFilterOptions() = MangaListFilterOptions(
         availableTags = GTT_GENRES.mapToSet { MangaTag(it.second, it.first, source) },
-        availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED)
+        // UPDATE: Add more available states
+        availableStates = EnumSet.of(
+            MangaState.ONGOING,
+            MangaState.FINISHED,
+            MangaState.CANCELLED,
+            MangaState.ON_HIATUS
+        )
     )
 
     override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
@@ -64,20 +72,25 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
                 append("&searchValue=${filter.query.urlEncoded()}")
             }
 
+            // UPDATE: Add mapping for FOLLOWERS
             val sortValue = when (order) {
                 SortOrder.POPULARITY -> "viewCount"
                 SortOrder.NEWEST -> "createdAt"
                 SortOrder.RATING -> "evaluationScore"
+                SortOrder.FOLLOWERS -> "followerCount"
                 else -> "recentDate" // UPDATED
             }
             append("&orders%5B%5D=$sortValue")
 
             filter.tags.forEach { append("&categories%5B%5D=${it.key}") }
 
+            // UPDATE: Add mapping for new states
             filter.states.forEach {
                 val statusKey = when (it) {
                     MangaState.ONGOING -> "PRG"
                     MangaState.FINISHED -> "END"
+                    MangaState.CANCELLED -> "STO"
+                    MangaState.ON_HIATUS -> "PDG"
                     else -> null
                 }
                 if (statusKey != null) append("&status%5B%5D=$statusKey")
@@ -90,9 +103,11 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
 
         return List(data.length()) { i ->
             val item = data.getJSONObject(i)
+            
+            val comicId = item.getString("id")
             val slug = item.getString("nameEn")
             val mangaUrl = "/truyen/$slug"
-
+            
             val categoryNames = item.optJSONArray("category")?.let { arr ->
                 (0 until arr.length()).map { arr.getString(it) }
             } ?: emptyList()
@@ -106,10 +121,10 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
             }.toSet()
 
             Manga(
-                id = generateUid(mangaUrl),
+                id = generateUid(comicId),
                 title = item.getString("name"),
                 altTitles = item.optString("otherName", "").split(",").mapNotNull { it.trim().takeIf(String::isNotBlank) }.toSet(),
-                url = mangaUrl,
+                url = comicId, 
                 publicUrl = "https://$domain$mangaUrl",
                 rating = item.optDouble("evaluationScore", 0.0).toFloat(),
                 contentRating = null,
@@ -118,6 +133,8 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
                 state = when (item.optString("statusCode")) {
                     "PRG" -> MangaState.ONGOING
                     "END" -> MangaState.FINISHED
+                    "STO" -> MangaState.CANCELLED
+                    "PDG" -> MangaState.ON_HIATUS
                     else -> null
                 },
                 authors = setOf(item.optString("author", "Updating")),
@@ -127,16 +144,15 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
     }
 
     override suspend fun getDetails(manga: Manga): Manga {
-        enforceRateLimit()
-        val responseBody = webClient.httpGet(manga.publicUrl).body!!.string()
-        val doc = Jsoup.parse(responseBody)
+        val comicId = manga.url
 
-        // CHANGE START: Extract chapters from embedded JSON in the HTML
-        // This is more efficient as it avoids a second API call.
         val chapters = try {
-            val chaptersJsonRaw = responseBody.substringAfter("\"chapters\":").substringBefore("}],\"isDone\"") + "}]"
-            val chaptersData = JSONArray(chaptersJsonRaw)
-            val slug = manga.url.substringAfterLast("/")
+            enforceRateLimit()
+            val chapterApiUrl = "https://$domain/api/comic/$comicId/chapter?limit=-1"
+            val chapterJson = webClient.httpGet(chapterApiUrl, extraHeaders = apiHeaders).parseJson()
+            val chaptersData = chapterJson.getJSONObject("result").getJSONArray("chapters")
+            
+            val slug = manga.publicUrl.substringAfterLast("/")
 
             List(chaptersData.length()) { i ->
                 val item = chaptersData.getJSONObject(i)
@@ -156,10 +172,11 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
                 )
             }
         } catch (e: Exception) {
-            // Fallback or error logging
-            emptyList<MangaChapter>()
+            emptyList()
         }
-        // CHANGE END
+
+        enforceRateLimit()
+        val doc = webClient.httpGet(manga.publicUrl).parseHtml()
 
         val nameToIdMap = GTT_GENRES.associate { (name, id) -> name to id }
         val tagElements = doc.select(".group-content > .v-chip-link")
@@ -172,12 +189,14 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
 
         return manga.copy(
             title = doc.selectFirst(".v-card-title")?.text().orEmpty(),
-            tags = tags,
+            tags = tags.ifEmpty { manga.tags },
             coverUrl = doc.selectFirst("img.image")?.absUrl("src"),
             state = when (doc.selectFirst(".mb-1:contains(Trạng thái:) span")?.text()) {
                 "Đang thực hiện" -> MangaState.ONGOING
                 "Hoàn thành" -> MangaState.FINISHED
-                else -> null
+                "Đã dừng" -> MangaState.CANCELLED
+                "Hoãn lại" -> MangaState.ON_HIATUS
+                else -> manga.state
             },
             authors = setOfNotNull(doc.selectFirst(".mb-1:contains(Tác giả:) span")?.text()),
             description = doc.selectFirst(".v-card-text")?.text(),
@@ -223,16 +242,19 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
         }
     }
     
+    // UPDATE: Complete genre list from website
     private val GTT_GENRES = listOf(
-        "Action" to "ACT", "Adult" to "ADU", "Adventure" to "ADV", "Anime" to "ANI",
-        "Chuyển Sinh" to "RED", "Cổ Đại" to "HIS", "Comedy" to "COM", "Comic" to "CMC",
-        "Cooking" to "COO", "Doujinshi" to "DOU", "Drama" to "DRA", "Ecchi" to "ECC",
-        "Fantasy" to "FTS", "Gender Bender" to "GDB", "Harem" to "HAR", "Historical" to "HIS",
-        "Horror" to "HOR", "Huyền Huyễn" to "MYS", "Isekai" to "ISE", "Josei" to "JOS",
-        "Live Action" to "LIA", "Magic" to "MAG", "Manhua" to "MAU", "Manhwa" to "MAW",
-        "Martial Arts" to "MAA", "Mature" to "MAT", "Mystery" to "MYS", "Ngôn Tình" to "ROM",
-        "One shot" to "OSH", "Romance" to "ROM", "School Life" to "SCL", "Sci-fi" to "SCF",
-        "Shoujo" to "SHJ", "Shounen" to "SHO", "Slice of Life" to "SOL", "Sports" to "SPO",
-        "Supernatural" to "SUN", "Tragedy" to "TRA", "Truyện Màu" to "COI", "Webtoon" to "WEB"
+        "Anime" to "ANI", "Drama" to "DRA", "Josei" to "JOS", "Manhwa" to "MAW",
+        "One Shot" to "OSH", "Shounen" to "SHO", "Webtoons" to "WEB", "Shoujo" to "SHJ",
+        "Harem" to "HAR", "Ecchi" to "ECC", "Mature" to "MAT", "Slice of life" to "SOL",
+        "Isekai" to "ISE", "Manga" to "MAG", "Manhua" to "MAU", "Hành Động" to "ACT",
+        "Phiêu Lưu" to "ADV", "Hài Hước" to "COM", "Võ Thuật" to "MAA", "Huyền Bí" to "MYS",
+        "Lãng Mạn" to "ROM", "Thể Thao" to "SPO", "Học Đường" to "SCL", "Lịch Sử" to "HIS",
+        "Kinh Dị" to "HOR", "Siêu Nhiên" to "SUN", "Bi Kịch" to "TRA", "Trùng Sinh" to "RED",
+        "Game" to "GAM", "Viễn Tưởng" to "FTS", "Khoa Học" to "SCF", "Truyện Màu" to "COI",
+        "Người Lớn" to "ADU", "BoyLove" to "BBL", "Hầm Ngục" to "DUN", "Săn Bắn" to "HUNT",
+        "Ngôn Từ Nhạy Cảm" to "NTNC", "Doujinshi" to "DOU", "Bạo Lực" to "BLM", "Ngôn Tình" to "NTT",
+        "Nữ Cường" to "NCT", "Gender Bender" to "GDB", "Murim" to "MRR", "Leo Tháp" to "LTT",
+        "Nấu Ăn" to "COO"
     )
 }
