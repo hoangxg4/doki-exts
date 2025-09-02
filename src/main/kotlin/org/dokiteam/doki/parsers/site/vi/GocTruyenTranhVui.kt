@@ -38,13 +38,12 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
             .build()
     }
 
-    // UPDATE: Add FOLLOWERS to sort options
+    // FIX: Reverted to only include supported SortOrder types
     override val availableSortOrders: Set<SortOrder> = EnumSet.of(
         SortOrder.UPDATED,
         SortOrder.POPULARITY,
         SortOrder.NEWEST,
-        SortOrder.RATING,
-        SortOrder.FOLLOWERS
+        SortOrder.RATING
     )
 
     override val filterCapabilities = MangaListFilterCapabilities(
@@ -54,13 +53,8 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
 
     override suspend fun getFilterOptions() = MangaListFilterOptions(
         availableTags = GTT_GENRES.mapToSet { MangaTag(it.second, it.first, source) },
-        // UPDATE: Add more available states
-        availableStates = EnumSet.of(
-            MangaState.ONGOING,
-            MangaState.FINISHED,
-            MangaState.CANCELLED,
-            MangaState.ON_HIATUS
-        )
+        // FIX: Reverted to only include supported MangaState types
+        availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED)
     )
 
     override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
@@ -72,25 +66,22 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
                 append("&searchValue=${filter.query.urlEncoded()}")
             }
 
-            // UPDATE: Add mapping for FOLLOWERS
+            // FIX: Removed unsupported SortOrder.FOLLOWERS
             val sortValue = when (order) {
                 SortOrder.POPULARITY -> "viewCount"
                 SortOrder.NEWEST -> "createdAt"
                 SortOrder.RATING -> "evaluationScore"
-                SortOrder.FOLLOWERS -> "followerCount"
                 else -> "recentDate" // UPDATED
             }
             append("&orders%5B%5D=$sortValue")
 
             filter.tags.forEach { append("&categories%5B%5D=${it.key}") }
 
-            // UPDATE: Add mapping for new states
+            // FIX: Removed unsupported MangaState mappings
             filter.states.forEach {
                 val statusKey = when (it) {
                     MangaState.ONGOING -> "PRG"
                     MangaState.FINISHED -> "END"
-                    MangaState.CANCELLED -> "STO"
-                    MangaState.ON_HIATUS -> "PDG"
                     else -> null
                 }
                 if (statusKey != null) append("&status%5B%5D=$statusKey")
@@ -103,11 +94,11 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
 
         return List(data.length()) { i ->
             val item = data.getJSONObject(i)
-            
+
             val comicId = item.getString("id")
             val slug = item.getString("nameEn")
             val mangaUrl = "/truyen/$slug"
-            
+
             val categoryNames = item.optJSONArray("category")?.let { arr ->
                 (0 until arr.length()).map { arr.getString(it) }
             } ?: emptyList()
@@ -124,17 +115,16 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
                 id = generateUid(comicId),
                 title = item.getString("name"),
                 altTitles = item.optString("otherName", "").split(",").mapNotNull { it.trim().takeIf(String::isNotBlank) }.toSet(),
-                url = comicId, 
+                url = comicId,
                 publicUrl = "https://$domain$mangaUrl",
                 rating = item.optDouble("evaluationScore", 0.0).toFloat(),
                 contentRating = null,
                 coverUrl = "https://$domain${item.getString("photo")}",
                 tags = tags,
+                // FIX: Removed unsupported state mappings
                 state = when (item.optString("statusCode")) {
                     "PRG" -> MangaState.ONGOING
                     "END" -> MangaState.FINISHED
-                    "STO" -> MangaState.CANCELLED
-                    "PDG" -> MangaState.ON_HIATUS
                     else -> null
                 },
                 authors = setOf(item.optString("author", "Updating")),
@@ -151,7 +141,7 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
             val chapterApiUrl = "https://$domain/api/comic/$comicId/chapter?limit=-1"
             val chapterJson = webClient.httpGet(chapterApiUrl, extraHeaders = apiHeaders).parseJson()
             val chaptersData = chapterJson.getJSONObject("result").getJSONArray("chapters")
-            
+
             val slug = manga.publicUrl.substringAfterLast("/")
 
             List(chaptersData.length()) { i ->
@@ -191,11 +181,10 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
             title = doc.selectFirst(".v-card-title")?.text().orEmpty(),
             tags = tags.ifEmpty { manga.tags },
             coverUrl = doc.selectFirst("img.image")?.absUrl("src"),
+            // FIX: Removed unsupported state mappings
             state = when (doc.selectFirst(".mb-1:contains(Trạng thái:) span")?.text()) {
                 "Đang thực hiện" -> MangaState.ONGOING
                 "Hoàn thành" -> MangaState.FINISHED
-                "Đã dừng" -> MangaState.CANCELLED
-                "Hoãn lại" -> MangaState.ON_HIATUS
                 else -> manga.state
             },
             authors = setOfNotNull(doc.selectFirst(".mb-1:contains(Tác giả:) span")?.text()),
@@ -241,8 +230,7 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
             lastRequestTime = System.currentTimeMillis()
         }
     }
-    
-    // UPDATE: Complete genre list from website
+
     private val GTT_GENRES = listOf(
         "Anime" to "ANI", "Drama" to "DRA", "Josei" to "JOS", "Manhwa" to "MAW",
         "One Shot" to "OSH", "Shounen" to "SHO", "Webtoons" to "WEB", "Shoujo" to "SHJ",
