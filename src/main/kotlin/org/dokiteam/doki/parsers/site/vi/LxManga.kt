@@ -1,213 +1,216 @@
 package org.dokiteam.doki.parsers.site.vi
 
-import okhttp3.Headers
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
 import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
+import okhttp3.Headers
 import java.text.SimpleDateFormat
 import java.util.*
 
 @MangaSourceParser("LXMANGA", "LXManga", "vi", type = ContentType.HENTAI)
 internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.LXMANGA, 60) {
 
-    override val configKeyDomain = ConfigKey.Domain("lxmanga.my")
+	override val configKeyDomain = ConfigKey.Domain("lxmanga.my")
 
-    // Bật cơ chế WebView để webClient có thể lấy cookie Cloudflare
-    override val isCloudflareProtected = true
+	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
+		super.onCreateConfig(keys)
+		keys.add(userAgentKey)
+	}
 
-    override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
-        super.onCreateConfig(keys)
-        keys.add(userAgentKey)
-    }
+	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
+		SortOrder.ALPHABETICAL,
+		SortOrder.ALPHABETICAL_DESC,
+		SortOrder.UPDATED,
+		SortOrder.NEWEST,
+		SortOrder.POPULARITY,
+	)
 
-    override val availableSortOrders: Set<SortOrder> = EnumSet.of(
-        SortOrder.ALPHABETICAL,
-        SortOrder.ALPHABETICAL_DESC,
-        SortOrder.UPDATED,
-        SortOrder.NEWEST,
-        SortOrder.POPULARITY,
-    )
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isSearchSupported = true,
+		)
 
-    override val filterCapabilities: MangaListFilterCapabilities
-        get() = MangaListFilterCapabilities(
-            isSearchSupported = true,
-        )
+	override suspend fun getFilterOptions() = MangaListFilterOptions(
+		availableTags = availableTags(),
+		availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED, MangaState.PAUSED),
+	)
 
-    override suspend fun getFilterOptions() = MangaListFilterOptions(
-        availableTags = availableTags(),
-        availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED, MangaState.PAUSED),
-    )
+	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
+		val url = buildString {
+			append("https://")
+			append(domain)
+			when {
+				!filter.query.isNullOrEmpty() -> {
+					append("/tim-kiem")
+					append("?filter[name]=")
+					append(filter.query.urlEncoded())
+					if (page > 1) {
+						append("&page=")
+						append(page)
+					}
+					append("&sort=")
+					append(
+						when (order) {
+							SortOrder.POPULARITY -> "-views"
+							SortOrder.UPDATED -> "-updated_at"
+							SortOrder.NEWEST -> "-created_at"
+							SortOrder.ALPHABETICAL -> "name"
+							SortOrder.ALPHABETICAL_DESC -> "-name"
+							else -> "-updated_at"
+						},
+					)
+				}
+				filter.tags.isNotEmpty() -> {
+					val tag = filter.tags.first()
+					append("/the-loai/")
+					append(tag.key)
+					append("?page=")
+					append(page)
+				}
+				else -> {
+					append("/danh-sach")
+					append("?sort=")
+					append(
+						when (order) {
+							SortOrder.POPULARITY -> "-views"
+							SortOrder.UPDATED -> "-updated_at"
+							SortOrder.NEWEST -> "-created_at"
+							SortOrder.ALPHABETICAL -> "name"
+							SortOrder.ALPHABETICAL_DESC -> "-name"
+							else -> "-updated_at"
+						},
+					)
+					append("&page=")
+					append(page)
+				}
+			}
+		}
 
-    override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
-        val url = buildString {
-            append("https://")
-            append(domain)
-            when {
-                !filter.query.isNullOrEmpty() -> {
-                    append("/tim-kiem")
-                    append("?filter[name]=")
-                    append(filter.query.urlEncoded())
-                    if (page > 1) {
-                        append("&page=")
-                        append(page)
-                    }
-                    append("&sort=")
-                    append(
-                        when (order) {
-                            SortOrder.POPULARITY -> "-views"
-                            SortOrder.UPDATED -> "-updated_at"
-                            SortOrder.NEWEST -> "-created_at"
-                            SortOrder.ALPHABETICAL -> "name"
-                            SortOrder.ALPHABETICAL_DESC -> "-name"
-                            else -> "-updated_at"
-                        },
-                    )
-                }
-                filter.tags.isNotEmpty() -> {
-                    val tag = filter.tags.first()
-                    append("/the-loai/")
-                    append(tag.key)
-                    append("?page=")
-                    append(page)
-                }
-                else -> {
-                    append("/danh-sach")
-                    append("?sort=")
-                    append(
-                        when (order) {
-                            SortOrder.POPULARITY -> "-views"
-                            SortOrder.UPDATED -> "-updated_at"
-                            SortOrder.NEWEST -> "-created_at"
-                            SortOrder.ALPHABETICAL -> "name"
-                            SortOrder.ALPHABETICAL_DESC -> "-name"
-                            else -> "-updated_at"
-                        },
-                    )
-                    append("&page=")
-                    append(page)
-                }
-            }
-        }
+		val doc = webClient.httpGet(url).parseHtml()
+		val mangaListContainer = doc.selectFirst("div.grid div.manga-vertical")?.parent()
 
-        val doc = webClient.httpGet(url).parseHtml()
-        val mangaListContainer = doc.selectFirst("div.grid div.manga-vertical")?.parent()
+		if (mangaListContainer == null) {
+			return emptyList()
+		}
 
-        if (mangaListContainer == null) {
-            return emptyList()
-        }
+		return mangaListContainer.children().mapNotNull { div ->
+			val titleElement = div.selectFirst("a.text-ellipsis") ?: return@mapNotNull null
+			val href = titleElement.attr("href")
+			if (!href.startsWith("/truyen/") && !href.startsWith("/novel/")) return@mapNotNull null
+			val coverUrl = div.selectFirst("div.cover")?.let {
+				it.attrOrNull("data-bg") ?: it.attrOrNull("style")?.cssUrl()
+			}?.replace("s3.lxmanga.top", domain).orEmpty()
 
-        return mangaListContainer.children().mapNotNull { div ->
-            val titleElement = div.selectFirst("a.text-ellipsis") ?: return@mapNotNull null
-            val href = titleElement.attr("href")
-            if (!href.startsWith("/truyen/") && !href.startsWith("/novel/")) return@mapNotNull null
-            val coverUrl = div.selectFirst("div.cover")?.let {
-                it.attrOrNull("data-bg") ?: it.attrOrNull("style")?.cssUrl()
-            }?.replace("s3.lxmanga.top", domain).orEmpty()
+			Manga(
+				id = generateUid(href),
+				title = titleElement.text(),
+				altTitles = emptySet(),
+				url = href,
+				publicUrl = href.toAbsoluteUrl(domain),
+				rating = RATING_UNKNOWN,
+				contentRating = ContentRating.ADULT,
+				coverUrl = coverUrl,
+				tags = setOf(),
+				state = null,
+				authors = emptySet(),
+				source = source,
+			)
+		}
+	}
 
-            Manga(
-                id = generateUid(href),
-                title = titleElement.text(),
-                altTitles = emptySet(),
-                url = href,
-                publicUrl = href.toAbsoluteUrl(domain),
-                rating = RATING_UNKNOWN,
-                contentRating = ContentRating.ADULT,
-                coverUrl = coverUrl,
-                tags = setOf(),
-                state = null,
-                authors = emptySet(),
-                source = source,
-            )
-        }
-    }
+	override suspend fun getDetails(manga: Manga): Manga {
+		val root = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
+		val chapterDateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", Locale.ROOT).apply {
+			timeZone = TimeZone.getTimeZone("GMT+7")
+		}
+		val author = root.selectFirst("div.mt-2:contains(Tác giả) span a")?.textOrNull()
+		val altTitles = root.selectFirst("div.grow div:contains(Tên khác)")?.select("span a")?.mapToSet { it.text() } ?: emptySet()
 
-    override suspend fun getDetails(manga: Manga): Manga {
-        val root = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
-        val chapterDateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", Locale.ROOT).apply {
-            timeZone = TimeZone.getTimeZone("GMT+7")
-        }
-        val author = root.selectFirst("div.mt-2:contains(Tác giả) span a")?.textOrNull()
-        val altTitles = root.selectFirst("div.grow div:contains(Tên khác)")?.select("span a")?.mapToSet { it.text() } ?: emptySet()
+		return manga.copy(
+			altTitles = altTitles,
+			state = when (root.selectFirst("div.mt-2:contains(Tình trạng) span.text-blue-500")?.text()) {
+				"Đang tiến hành" -> MangaState.ONGOING
+				"Đã hoàn thành" -> MangaState.FINISHED
+				else -> null
+			},
+			tags = root.selectFirst("div.mt-2:contains(Thể loại)")?.select("a.bg-gray-500")?.mapToSet { a ->
+				MangaTag(key = a.attr("href").removeSuffix('/').substringAfterLast('/'), title = a.text(), source = source)
+			} ?: emptySet(),
+			authors = setOfNotNull(author),
+			description = root.selectFirst("meta[name=description]")?.attrOrNull("content"),
+			chapters = root.select("div.justify-between ul.overflow-y-auto.overflow-x-hidden a")
+				.mapChapters(reversed = true) { i, a ->
+					val href = a.attrAsRelativeUrl("href")
+					val name = a.selectFirst("span.text-ellipsis")?.text().orEmpty()
+					val dateText = a.parent()?.selectFirst("span.timeago")?.attr("datetime").orEmpty()
+					MangaChapter(
+						id = generateUid(href),
+						title = name,
+						number = (i + 1).toFloat(),
+						volume = 0,
+						url = href,
+						scanlator = null,
+						uploadDate = chapterDateFormat.parseSafe(dateText),
+						branch = null,
+						source = source,
+					)
+				},
+		)
+	}
 
-        return manga.copy(
-            altTitles = altTitles,
-            state = when (root.selectFirst("div.mt-2:contains(Tình trạng) span.text-blue-500")?.text()) {
-                "Đang tiến hành" -> MangaState.ONGOING
-                "Đã hoàn thành" -> MangaState.FINISHED
-                else -> null
-            },
-            tags = root.selectFirst("div.mt-2:contains(Thể loại)")?.select("a.bg-gray-500")?.mapToSet { a ->
-                MangaTag(key = a.attr("href").removeSuffix('/').substringAfterLast('/'), title = a.text(), source = source)
-            } ?: emptySet(),
-            authors = setOfNotNull(author),
-            description = root.selectFirst("meta[name=description]")?.attrOrNull("content"),
-            chapters = root.select("div.justify-between ul.overflow-y-auto.overflow-x-hidden a")
-                .mapChapters(reversed = true) { i, a ->
-                    val href = a.attrAsRelativeUrl("href")
-                    val name = a.selectFirst("span.text-ellipsis")?.text().orEmpty()
-                    val dateText = a.parent()?.selectFirst("span.timeago")?.attr("datetime").orEmpty()
-                    MangaChapter(
-                        id = generateUid(href),
-                        title = name,
-                        number = (i + 1).toFloat(),
-                        volume = 0,
-                        url = href,
-                        scanlator = null,
-                        uploadDate = chapterDateFormat.parseSafe(dateText),
-                        branch = null,
-                        source = source,
-                    )
-                },
-        )
-    }
+	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
+		val fullUrl = chapter.url.toAbsoluteUrl(domain)
+		val doc = webClient.httpGet(fullUrl).parseHtml()
 
-    // getPages chỉ trả về URL ảnh thật
-    override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-        val fullUrl = chapter.url.toAbsoluteUrl(domain)
-        val doc = webClient.httpGet(fullUrl).parseHtml()
+		val imageUrls = doc.select("div.text-center div.lazy[data-src]")
+		if (imageUrls.isEmpty()) {
+			throw Exception("Không tìm thấy ảnh nào. Có thể cần mua LXCoin để xem trên web.")
+		}
+		
+		return imageUrls.map { div ->
+			val url = div.attr("data-src")
+			MangaPage(
+				id = generateUid(url),
+				url = PROXY_URL_PREFIX + url.urlEncoded(),
+				preview = null,
+				source = source
+			)
+		}
+	}
 
-        val imageUrls = doc.select("div.text-center div.lazy[data-src]")
-        if (imageUrls.isEmpty()) {
-            throw Exception("Không tìm thấy ảnh nào. Có thể cần mua LXCoin để xem trên web.")
-        }
-        
-        return imageUrls.map { div ->
-            val url = div.attr("data-src")
-            MangaPage(
-                id = generateUid(url),
-                url = url,
-                preview = null,
-                source = source
-            )
-        }
-    }
+	override suspend fun getPageUrl(page: MangaPage): String {
+		if (page.url.startsWith(PROXY_URL_PREFIX)) {
+			val realUrl = page.url.substringAfter(PROXY_URL_PREFIX).urlDecoded()
+			val imageHeaders = Headers.Builder()
+				.add("Referer", "https://$domain/")
+				.build()
+			val response = webClient.httpGet(realUrl, extraHeaders = imageHeaders)
+			response.close()
+			return response.request.url.toString()
+		}
+		return page.url
+	}
 
-    // getPageUrl sẽ được app gọi trước khi tải ảnh, đây là nơi chúng ta thêm header
-    override suspend fun getPageUrl(page: MangaPage): String {
-        val imageHeaders = Headers.Builder()
-            .add("Referer", "https://$domain/")
-            .build()
-        // Dùng webClient của parser (đã có cookie) để "ping" URL ảnh với header đúng.
-        // App sẽ dùng URL trả về từ đây để tải.
-        val response = webClient.httpGet(page.url, extraHeaders = imageHeaders)
-        response.close() // Quan trọng: đóng response body để tránh leak tài nguyên
-        return response.request.url.toString()
-    }
+	private suspend fun availableTags(): Set<MangaTag> {
+		val url = "https://$domain/the-loai"
+		val doc = webClient.httpGet(url).parseHtml()
 
-    private suspend fun availableTags(): Set<MangaTag> {
-        val url = "https://$domain/the-loai"
-        val doc = webClient.httpGet(url).parseHtml()
+		return doc.select("nav.grid.grid-cols-3.md\\:grid-cols-8 button").map { button ->
+			val key = button.attr("wire:click").substringAfterLast(", '").substringBeforeLast("')")
+			MangaTag(
+				key = key,
+				title = button.select("span.text-ellipsis").text(),
+				source = source,
+			)
+		}.toSet()
+	}
 
-        return doc.select("nav.grid.grid-cols-3.md\\:grid-cols-8 button").map { button ->
-            val key = button.attr("wire:click").substringAfterLast(", '").substringBeforeLast("')")
-            MangaTag(
-                key = key,
-                title = button.select("span.text-ellipsis").text(),
-                source = source,
-            )
-        }.toSet()
-    }
+	companion object {
+		private const val PROXY_URL_PREFIX = "lxmanga_image_proxy::"
+		
+		private fun String.urlDecoded(): String = URLDecoder.decode(this, "UTF-8")
+	}
 }
