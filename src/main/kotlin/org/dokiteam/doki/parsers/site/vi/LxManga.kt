@@ -7,7 +7,6 @@ import org.dokiteam.doki.parsers.config.ConfigKey
 import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
-import java.net.URLDecoder
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -162,25 +161,41 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 		)
 	}
 
+	// getPages chỉ trả về URL ảnh thật.
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
 		val fullUrl = chapter.url.toAbsoluteUrl(domain)
 		val doc = webClient.httpGet(fullUrl).parseHtml()
+
 		val imageUrls = doc.select("div.text-center div.lazy[data-src]")
-		if (imageUrls.isEmpty()) throw Exception("Không tìm thấy ảnh nào.")
+		if (imageUrls.isEmpty()) {
+			throw Exception("Không tìm thấy ảnh nào.")
+		}
 		
-		return imageUrls.map {
-			val url = it.attr("data-src")
-			MangaPage(id = generateUid(url), url = url, source = source, preview = null)
+		return imageUrls.map { div ->
+			val url = div.attr("data-src")
+			MangaPage(
+				id = generateUid(url),
+				url = url,
+				preview = null,
+				source = source
+			)
 		}
 	}
 
+	// getPageUrl sẽ được app gọi trước khi tải ảnh. Đây là nơi chúng ta "mở khóa" URL.
 	override suspend fun getPageUrl(page: MangaPage): String {
-		val headers = Headers.Builder().add("Referer", "https://$domain/").build()
-		// Dùng webClient để thực hiện request HEAD, một request nhẹ chỉ để lấy header và xác thực.
-		// Nó sẽ trả về URL cuối cùng (sau khi redirect nếu có) để trình tải ảnh của app sử dụng.
-		val response = webClient.httpHead(page.url, extraHeaders = headers)
-		response.close()
-		return response.request.url.toString()
+		val headers = Headers.Builder()
+			.add("Referer", "https://$domain/")
+			.build()
+
+		// Sửa lỗi: Dùng httpGet vì httpHead không hỗ trợ extraHeaders.
+		val response = webClient.httpGet(page.url, extraHeaders = headers)
+
+		// Sửa lỗi: Đóng response.body để tránh leak tài nguyên.
+		response.body?.close()
+
+		// Sửa lỗi: Trả về URL gốc. Việc gọi httpGet ở trên chỉ để "làm ấm" session/cookie.
+		return page.url
 	}
 
 	private suspend fun availableTags(): Set<MangaTag> {
