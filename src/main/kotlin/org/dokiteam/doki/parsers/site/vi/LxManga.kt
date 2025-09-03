@@ -167,7 +167,7 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 	}
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-		// Bước 1: Khởi động server proxy nếu nó chưa chạy
+		// Khởi động server proxy nếu nó chưa chạy.
 		startProxyIfNeeded()
 
 		val fullUrl = chapter.url.toAbsoluteUrl(domain)
@@ -207,12 +207,11 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 
 	// === LOGIC SERVER PROXY TÍCH HỢP ===
 	companion object {
-		private const val PROXY_PORT = 8081 // Đổi cổng để tránh xung đột
+		private const val PROXY_PORT = 8081
 		private const val PROXY_ADDRESS = "http://127.0.0.1:$PROXY_PORT"
 		
 		@Volatile private var proxyInstance: ProxyServer? = null
 
-		// Hàm khởi động server, đảm bảo chỉ chạy 1 lần duy nhất
 		private fun startProxyIfNeeded() {
 			if (proxyInstance == null) {
 				synchronized(this) {
@@ -231,7 +230,6 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 		}
 	}
 
-	// Lớp server được định nghĩa ngay bên trong file
 	private class ProxyServer(port: Int) : NanoHTTPD(port) {
 		private val client = OkHttpClient()
 
@@ -248,17 +246,19 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 					val response = client.newCall(request).execute()
 
 					if (!response.isSuccessful) {
-						return newFixedLengthResponse(Status.lookup(response.code), "text/plain", "Upstream server returned error: ${response.code}")
+						return newFixedLengthResponse(Response.Status.lookup(response.code), "text/plain", "Upstream server returned error: ${response.code}")
 					}
 
 					val contentType = response.header("Content-Type", "image/jpeg")
-					return newChunkedResponse(Status.OK, contentType, response.body!!.byteStream())
+					return newChunkedResponse(Response.Status.OK, contentType, response.body!!.byteStream())
 
 				} catch (e: Exception) {
-					return newFixedLengthResponse(Status.INTERNAL_ERROR, "text/plain", "Proxy error: ${e.message}")
+					// Sửa lỗi: Thay 'Status' thành 'Response.Status'
+					return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Proxy error: ${e.message}")
 				}
 			}
-			return newFixedLengthResponse(Status.NOT_FOUND, "text/plain", "Not Found")
+			// Sửa lỗi: Thay 'Status' thành 'Response.Status'
+			return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Not Found")
 		}
 	}
 }
