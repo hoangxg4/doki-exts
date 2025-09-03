@@ -10,6 +10,7 @@ import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import java.io.IOException
+import java.net.URLDecoder // Thêm import này
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -17,6 +18,8 @@ import java.util.*
 internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.LXMANGA, 60) {
 
 	override val configKeyDomain = ConfigKey.Domain("lxmanga.my")
+    
+    // ĐÃ XÓA: override val isCloudflareProtected = true (vì SDK không hỗ trợ)
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
@@ -167,7 +170,6 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 	}
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-		// Khởi động server proxy nếu nó chưa chạy.
 		startProxyIfNeeded()
 
 		val fullUrl = chapter.url.toAbsoluteUrl(domain)
@@ -191,6 +193,15 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 		}
 	}
 
+	// Override hàm này để xử lý URL proxy
+	override suspend fun getPageUrl(page: MangaPage): String {
+		// Hàm này chỉ trả về URL thật, server proxy sẽ lo phần còn lại
+		if (page.url.startsWith(PROXY_ADDRESS)) {
+			return page.url
+		}
+		return super.getPageUrl(page)
+	}
+
 	private suspend fun availableTags(): Set<MangaTag> {
 		val url = "https://$domain/the-loai"
 		val doc = webClient.httpGet(url).parseHtml()
@@ -205,7 +216,6 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 		}.toSet()
 	}
 
-	// === LOGIC SERVER PROXY TÍCH HỢP ===
 	companion object {
 		private const val PROXY_PORT = 8081
 		private const val PROXY_ADDRESS = "http://127.0.0.1:$PROXY_PORT"
@@ -246,19 +256,17 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 					val response = client.newCall(request).execute()
 
 					if (!response.isSuccessful) {
-						return newFixedLengthResponse(Response.Status.lookup(response.code), "text/plain", "Upstream server returned error: ${response.code}")
+						return newFixedLengthResponse(Response.Status.lookup(response.code), NanoHTTPD.MIME_PLAINTEXT, "Upstream server returned error: ${response.code}")
 					}
 
 					val contentType = response.header("Content-Type", "image/jpeg")
 					return newChunkedResponse(Response.Status.OK, contentType, response.body!!.byteStream())
 
 				} catch (e: Exception) {
-					// Sửa lỗi: Thay 'Status' thành 'Response.Status'
-					return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Proxy error: ${e.message}")
+					return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, NanoHTTPD.MIME_PLAINTEXT, "Proxy error: ${e.message}")
 				}
 			}
-			// Sửa lỗi: Thay 'Status' thành 'Response.Status'
-			return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Not Found")
+			return newFixedLengthResponse(Response.Status.NOT_FOUND, NanoHTTPD.MIME_PLAINTEXT, "Not Found")
 		}
 	}
 }
