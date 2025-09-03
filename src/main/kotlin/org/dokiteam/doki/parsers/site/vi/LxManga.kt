@@ -1,24 +1,43 @@
 package org.dokiteam.doki.parsers.site.vi
 
+import okhttp3.Interceptor
+import okhttp3.Response
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
 import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
-import okhttp3.Headers
 import java.text.SimpleDateFormat
 import java.util.*
-import java.net.URLDecoder
 
 @MangaSourceParser("LXMANGA", "LXManga", "vi", type = ContentType.HENTAI)
-internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.LXMANGA, 60) {
+internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.LXMANGA, 60), Interceptor {
 
 	override val configKeyDomain = ConfigKey.Domain("lxmanga.my")
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
 		keys.add(userAgentKey)
+	}
+	
+	/**
+	 * Tự quản lý header cho parser này.
+	 * Hàm này sẽ được app tự động gọi cho MỌI request (lấy HTML, lấy ảnh,...).
+	 * Chúng ta thêm Referer ở đây để sửa lỗi 404 khi tải ảnh.
+	 */
+	override fun intercept(chain: Interceptor.Chain): Response {
+		val originalRequest = chain.request()
+
+		// Chỉ thêm Referer nếu request chưa có để tránh ghi đè.
+		if (originalRequest.header("Referer") == null) {
+			val newRequest = originalRequest.newBuilder()
+				.addHeader("Referer", "https://$domain/")
+				.build()
+			return chain.proceed(newRequest)
+		}
+		
+		return chain.proceed(originalRequest)
 	}
 
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
@@ -175,24 +194,11 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 			val url = div.attr("data-src")
 			MangaPage(
 				id = generateUid(url),
-				url = PROXY_URL_PREFIX + url.urlEncoded(),
+				url = url,
 				preview = null,
 				source = source
 			)
 		}
-	}
-
-	override suspend fun getPageUrl(page: MangaPage): String {
-		if (page.url.startsWith(PROXY_URL_PREFIX)) {
-			val realUrl = page.url.substringAfter(PROXY_URL_PREFIX).urlDecoded()
-			val imageHeaders = Headers.Builder()
-				.add("Referer", "https://$domain/")
-				.build()
-			val response = webClient.httpGet(realUrl, extraHeaders = imageHeaders)
-			response.close()
-			return response.request.url.toString()
-		}
-		return page.url
 	}
 
 	private suspend fun availableTags(): Set<MangaTag> {
@@ -207,11 +213,5 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 				source = source,
 			)
 		}.toSet()
-	}
-
-	companion object {
-		private const val PROXY_URL_PREFIX = "lxmanga_image_proxy::"
-		
-		private fun String.urlDecoded(): String = URLDecoder.decode(this, "UTF-8")
 	}
 }
