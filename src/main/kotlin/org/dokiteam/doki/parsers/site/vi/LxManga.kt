@@ -1,5 +1,6 @@
 package org.dokiteam.doki.parsers.site.vi
 
+import okhttp3.Headers
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
@@ -121,17 +122,22 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 		}
 
 		val doc = webClient.httpGet(url).parseHtml()
+		
+		val mangaListContainer = doc.selectFirst("div:has(span:contains(Danh sách truyện))")
+			?.selectFirst("div.grid.grid-cols-2")
+			?: doc.selectFirst(".grid.grid-cols-2")
 
-		return doc.select("div.grid div.manga-vertical").mapNotNull { div ->
-			// Lấy element a chứa cả link và tiêu đề. Selector này ổn định cho cả truyện và novel.
-			val titleElement = div.selectFirst("div.p-2 a.text-ellipsis")
+		if (mangaListContainer == null) {
+			return emptyList()
+		}
+
+		return mangaListContainer.children().mapNotNull { div ->
+			val titleElement = div.selectFirst("a.text-ellipsis")
 			if (titleElement == null) {
-				// Bỏ qua item nếu không có cấu trúc hợp lệ (có thể là quảng cáo hoặc lỗi layout)
 				return@mapNotNull null
 			}
 
 			val href = titleElement.attr("href")
-			// Bỏ qua nếu href không phải link truyện hoặc novel
 			if (!href.startsWith("/truyen/") && !href.startsWith("/novel/")) {
 				return@mapNotNull null
 			}
@@ -209,24 +215,20 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 		val fullUrl = chapter.url.toAbsoluteUrl(domain)
 		val doc = webClient.httpGet(fullUrl).parseHtml()
 
-		// Tạo một chuỗi JSON chứa thông tin header cần thiết.
-		// Dấu #$# là ký tự phân cách đặc biệt để app nhận diện.
 		val headersJson = """{"Referer":"https://""" + domain + """/"}"""
 
 		val imageUrls = doc.select("div.text-center div.lazy[data-src]")
 		if (imageUrls.isEmpty()) {
-			// Giữ lại thông báo lỗi này vì nó vẫn có thể đúng trong trường hợp truyện có phí.
 			throw Exception("Không tìm thấy ảnh nào. Có thể cần mua LXCoin để xem trên web.")
 		}
 
 		return imageUrls.map { div ->
 			val url = div.attr("data-src")
-			// Nối URL gốc với chuỗi header JSON bằng ký tự phân cách
 			val urlWithHeaders = "$url #$# $headersJson"
 
 			MangaPage(
 				id = generateUid(url),
-				url = urlWithHeaders, // Sử dụng URL đã chứa header
+				url = urlWithHeaders,
 				preview = null,
 				source = source
 			)
