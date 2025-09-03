@@ -99,7 +99,7 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 				when (order) {
 					SortOrder.POPULARITY -> append("-views")
 					SortOrder.UPDATED -> append("-updated_at")
-					SortOrder.NEWEST -> append("-created_at")
+					SortOrder.NEWEST -> append("-created_at"
 					SortOrder.ALPHABETICAL -> append("name")
 					SortOrder.ALPHABETICAL_DESC -> append("-name")
 					else -> append("-updated_at")
@@ -122,7 +122,7 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 		}
 
 		val doc = webClient.httpGet(url).parseHtml()
-		
+
 		val mangaListContainer = doc.selectFirst("div:has(span:contains(Danh sách truyện))")
 			?.selectFirst("div.grid.grid-cols-2")
 			?: doc.selectFirst(".grid.grid-cols-2")
@@ -215,7 +215,10 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 		val fullUrl = chapter.url.toAbsoluteUrl(domain)
 		val doc = webClient.httpGet(fullUrl).parseHtml()
 
-		val headersJson = """{"Referer":"https://""" + domain + """/"}"""
+		// Chuẩn bị header Referer để gửi kèm request tải ảnh
+		val imageHeaders = Headers.Builder()
+			.add("Referer", "https://$domain/")
+			.build()
 
 		val imageUrls = doc.select("div.text-center div.lazy[data-src]")
 		if (imageUrls.isEmpty()) {
@@ -224,13 +227,12 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 
 		return imageUrls.map { div ->
 			val url = div.attr("data-src")
-			val urlWithHeaders = "$url #$# $headersJson"
-
 			MangaPage(
 				id = generateUid(url),
-				url = urlWithHeaders,
+				url = url,
 				preview = null,
-				source = source
+				source = source,
+				headers = imageHeaders // Tham số này đã hợp lệ vì chúng ta đã nâng cấp MangaPage
 			)
 		}
 	}
