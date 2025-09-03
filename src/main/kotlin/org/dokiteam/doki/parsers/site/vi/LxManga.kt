@@ -1,11 +1,15 @@
 package org.dokiteam.doki.parsers.site.vi
 
+import fi.iki.elonen.NanoHTTPD
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
 import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
+import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -13,9 +17,6 @@ import java.util.*
 internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.LXMANGA, 60) {
 
 	override val configKeyDomain = ConfigKey.Domain("lxmanga.my")
-    
-    // Kích hoạt cơ chế WebView để lấy cookie Cloudflare, phòng trường hợp cần thiết
-	override val isCloudflareProtected = true
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
@@ -166,6 +167,9 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 	}
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
+		// Bước 1: Khởi động server proxy nếu nó chưa chạy
+		startProxyIfNeeded()
+
 		val fullUrl = chapter.url.toAbsoluteUrl(domain)
 		val doc = webClient.httpGet(fullUrl).parseHtml()
 
@@ -173,26 +177,18 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 		if (imageUrls.isEmpty()) {
 			throw Exception("Không tìm thấy ảnh nào. Có thể cần mua LXCoin để xem trên web.")
 		}
-		
+
 		return imageUrls.map { div ->
-			val url = div.attr("data-src")
+			val realUrl = div.attr("data-src")
+			val proxyUrl = "$PROXY_ADDRESS/proxy?url=${realUrl.urlEncoded()}"
+			
 			MangaPage(
-				id = generateUid(url),
-				url = PROXY_URL_PREFIX + url.urlEncoded(),
+				id = generateUid(realUrl),
+				url = proxyUrl,
 				preview = null,
 				source = source
 			)
 		}
-	}
-
-	// App sẽ gọi hàm này với URL "giả" chúng ta đã tạo
-	override suspend fun getPageUrl(page: MangaPage): String {
-		if (page.url.startsWith(PROXY_URL_PREFIX)) {
-			val realUrl = page.url.substringAfter(PROXY_URL_PREFIX).urlDecoded()
-			// Chỉ cần trả về URL thật. App sẽ dùng cookie đã có từ webClient để tải ảnh.
-			return realUrl
-		}
-		return page.url
 	}
 
 	private suspend fun availableTags(): Set<MangaTag> {
@@ -209,7 +205,60 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 		}.toSet()
 	}
 
+	// === LOGIC SERVER PROXY TÍCH HỢP ===
 	companion object {
-		private const val PROXY_URL_PREFIX = "lxmanga_image_proxy::"
+		private const val PROXY_PORT = 8081 // Đổi cổng để tránh xung đột
+		private const val PROXY_ADDRESS = "http://127.0.0.1:$PROXY_PORT"
+		
+		@Volatile private var proxyInstance: ProxyServer? = null
+
+		// Hàm khởi động server, đảm bảo chỉ chạy 1 lần duy nhất
+		private fun startProxyIfNeeded() {
+			if (proxyInstance == null) {
+				synchronized(this) {
+					if (proxyInstance == null) {
+						try {
+							val server = ProxyServer(PROXY_PORT)
+							server.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
+							proxyInstance = server
+							println("LxManga Proxy Server started on port $PROXY_PORT")
+						} catch (e: IOException) {
+							System.err.println("Failed to start LxManga Proxy Server: ${e.message}")
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Lớp server được định nghĩa ngay bên trong file
+	private class ProxyServer(port: Int) : NanoHTTPD(port) {
+		private val client = OkHttpClient()
+
+		override fun serve(session: IHTTPSession): Response {
+			if (session.uri == "/proxy" && session.parms.containsKey("url")) {
+				val realImageUrl = session.parms["url"]
+				try {
+					val request = Request.Builder()
+						.url(realImageUrl!!)
+						.header("Referer", "https://lxmanga.my/")
+						.header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36")
+						.build()
+					
+					val response = client.newCall(request).execute()
+
+					if (!response.isSuccessful) {
+						return newFixedLengthResponse(Status.lookup(response.code), "text/plain", "Upstream server returned error: ${response.code}")
+					}
+
+					val contentType = response.header("Content-Type", "image/jpeg")
+					return newChunkedResponse(Status.OK, contentType, response.body!!.byteStream())
+
+				} catch (e: Exception) {
+					return newFixedLengthResponse(Status.INTERNAL_ERROR, "text/plain", "Proxy error: ${e.message}")
+				}
+			}
+			return newFixedLengthResponse(Status.NOT_FOUND, "text/plain", "Not Found")
+		}
 	}
 }
