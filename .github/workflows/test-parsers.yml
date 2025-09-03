@@ -23,7 +23,7 @@ jobs:
       - name: Build
         run: ./gradlew assemble
 
-      - name: Trigger JitPack build for doki-exts
+      - name: Trigger JitPack via metadata
         run: |
-          curl -X POST "https://jitpack.io/com/github/hoangxg4/doki-exts/main" \
-            -u ${{ secrets.JITPACK_TOKEN }}:
+          curl -s "https://jitpack.io/com/github/hoangxg4/doki-exts/main-SNAPSHOT/maven-metadata.xml." \
+            -o /dev/null
