@@ -9,6 +9,7 @@ import org.dokiteam.doki.parsers.util.*
 import okhttp3.Headers
 import java.text.SimpleDateFormat
 import java.util.*
+import java.net.URLDecoder
 
 @MangaSourceParser("LXMANGA", "LXManga", "vi", type = ContentType.HENTAI)
 internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.LXMANGA, 60) {
