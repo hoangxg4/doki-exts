@@ -1,6 +1,5 @@
 package org.dokiteam.doki.parsers.site.vi
 
-import okhttp3.Headers
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
@@ -215,11 +214,6 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 		val fullUrl = chapter.url.toAbsoluteUrl(domain)
 		val doc = webClient.httpGet(fullUrl).parseHtml()
 
-		// Chuẩn bị header Referer để gửi kèm request tải ảnh
-		val imageHeaders = Headers.Builder()
-			.add("Referer", "https://$domain/")
-			.build()
-
 		val imageUrls = doc.select("div.text-center div.lazy[data-src]")
 		if (imageUrls.isEmpty()) {
 			throw Exception("Không tìm thấy ảnh nào. Có thể cần mua LXCoin để xem trên web.")
@@ -229,10 +223,9 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 			val url = div.attr("data-src")
 			MangaPage(
 				id = generateUid(url),
-				url = url,
+				url = url, // Chỉ cần truyền URL, app sẽ tự thêm Referer
 				preview = null,
-				source = source,
-				headers = imageHeaders // Tham số này đã hợp lệ vì chúng ta đã nâng cấp MangaPage
+				source = source
 			)
 		}
 	}
