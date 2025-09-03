@@ -1,6 +1,5 @@
 package org.dokiteam.doki.parsers.site.vi
 
-import okhttp3.Headers
 import okhttp3.Interceptor
 import okhttp3.Response
 import org.dokiteam.doki.parsers.MangaLoaderContext
@@ -13,15 +12,36 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 @MangaSourceParser("LXMANGA", "LXManga", "vi", type = ContentType.HENTAI)
-// Thêm "Interceptor" vào đây
-internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.LXMANGA, 60), Interceptor {
+internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.LXMANGA, 60) {
+    // Lưu ý: class PagedMangaParser đã implement MangaParser,
+    // mà MangaParser lại kế thừa Interceptor, nên chúng ta chỉ cần override hàm intercept.
 
 	override val configKeyDomain = ConfigKey.Domain("lxmanga.my")
 
-	// ... (các hàm khác từ onCreateConfig đến getListPage giữ nguyên)
-    // ... (bạn có thể copy từ phiên bản trước của bạn)
+	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
+		super.onCreateConfig(keys)
+		keys.add(userAgentKey)
+	}
 
-    override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
+	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
+		SortOrder.ALPHABETICAL,
+		SortOrder.ALPHABETICAL_DESC,
+		SortOrder.UPDATED,
+		SortOrder.NEWEST,
+		SortOrder.POPULARITY,
+	)
+
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isSearchSupported = true,
+		)
+
+	override suspend fun getFilterOptions() = MangaListFilterOptions(
+		availableTags = availableTags(),
+		availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED, MangaState.PAUSED),
+	)
+
+	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val url = buildString {
 			append("https://")
 			append(domain)
@@ -145,7 +165,7 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 			)
 		}
 	}
-	
+
 	override suspend fun getDetails(manga: Manga): Manga {
 		val root = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
 		val chapterDateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", Locale.ROOT).apply {
@@ -194,25 +214,6 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 		)
 	}
 
-	/**
-	 * Hàm này sẽ được tự động gọi cho mọi request HTTP của parser này.
-	 * Chúng ta sẽ thêm Referer vào đây.
-	 */
-	override fun intercept(chain: Interceptor.Chain): Response {
-		val request = chain.request()
-		
-		// Nếu request chưa có Referer, thêm nó vào
-		if (request.header("Referer") == null) {
-			val newRequest = request.newBuilder()
-				.addHeader("Referer", "https://$domain/")
-				.build()
-			return chain.proceed(newRequest)
-		}
-		
-		return chain.proceed(request)
-	}
-
-	// Hàm getPages bây giờ trở nên cực kỳ đơn giản
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
 		val fullUrl = chapter.url.toAbsoluteUrl(domain)
 		val doc = webClient.httpGet(fullUrl).parseHtml()
@@ -221,8 +222,7 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 		if (imageUrls.isEmpty()) {
 			throw Exception("Không tìm thấy ảnh nào. Có thể cần mua LXCoin để xem trên web.")
 		}
-
-		// Chỉ cần trả về URL, interceptor sẽ lo phần header
+		
 		return imageUrls.map { div ->
 			val url = div.attr("data-src")
 			MangaPage(
@@ -230,9 +230,28 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 				url = url,
 				preview = null,
 				source = source
-				// Không cần trường headers ở đây nữa
 			)
 		}
+	}
+	
+	/**
+	 * Hàm này được kế thừa từ interface MangaParser -> Interceptor.
+	 * Nó sẽ được app tự động gọi cho MỌI request của parser này.
+	 * Chúng ta sẽ thêm Referer vào đây để sửa lỗi 404 khi tải ảnh.
+	 */
+	override fun intercept(chain: Interceptor.Chain): Response {
+		val request = chain.request()
+
+		// Nếu request là tới server ảnh và chưa có Referer, hãy thêm vào.
+		if (request.url.host.contains("lxmanga.xyz") && request.header("Referer") == null) {
+			val newRequest = request.newBuilder()
+				.addHeader("Referer", "https://$domain/")
+				.build()
+			return chain.proceed(newRequest)
+		}
+		
+		// Với các request khác, cứ để nó đi bình thường.
+		return chain.proceed(request)
 	}
 
 	private suspend fun availableTags(): Set<MangaTag> {
