@@ -1,5 +1,6 @@
 package org.dokiteam.doki.parsers.model
 
+import okhttp3.Headers // QUAN TRỌNG: Thêm dòng import này
 import org.dokiteam.doki.parsers.MangaParser
 
 public data class MangaPage(
@@ -19,4 +20,9 @@ public data class MangaPage(
 	 */
 	@JvmField public val preview: String?,
 	@JvmField public val source: MangaSource,
+	/**
+	 * Custom headers for this page request.
+	 * Added for parsers that need specific headers (e.g., Referer).
+	 */
+	@JvmField public val headers: Headers? = null
 )
