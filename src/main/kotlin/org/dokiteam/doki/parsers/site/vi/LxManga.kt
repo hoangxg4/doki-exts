@@ -99,7 +99,7 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 				when (order) {
 					SortOrder.POPULARITY -> append("-views")
 					SortOrder.UPDATED -> append("-updated_at")
-					SortOrder.NEWEST -> append("-created_at"
+					SortOrder.NEWEST -> append("-created_at")
 					SortOrder.ALPHABETICAL -> append("name")
 					SortOrder.ALPHABETICAL_DESC -> append("-name")
 					else -> append("-updated_at")
