@@ -1,5 +1,6 @@
 package org.dokiteam.doki.parsers.site.vi
 
+import androidx.collection.arraySetOf
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -12,20 +13,13 @@ import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import org.json.JSONObject
-import org.jsoup.Jsoup
 import java.util.*
 
-@MangaSourceParser("GOCTRUYENTRANHVUI", "Goc Truyen Tranh Vui", "vi")
+@MangaSourceParser("GOCTRUYENTRANHVUI", "Góc Truyện Tranh Vui", "vi")
 internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.GOCTRUYENTRANHVUI, 50) {
 
-    init {
-        setFirstPage(0)
-	}
-	
-	override val configKeyDomain = ConfigKey.Domain("goctruyentranhvui17.com")
+    override val configKeyDomain = ConfigKey.Domain("goctruyentranhvui17.com")
     private val apiUrl by lazy { "https://$domain/api/v2" }
-    // Domain chứa ảnh có thể khác, nhưng URL trả về từ API/JSON đã là URL đầy đủ
-    // private val imageDomain = "https://goctruyentranh2.pro" // Không cần thiết nếu URL đã đầy đủ
 
     companion object {
         private const val REQUEST_DELAY_MS = 350L
@@ -56,16 +50,15 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
     )
 
     override suspend fun getFilterOptions() = MangaListFilterOptions(
-        availableTags = GTT_GENRES.map { MangaTag(key = it.second, title = it.first, source = source) }.distinctBy { it.key }.toSet(),
+        availableTags = availableTags(),
         availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED)
     )
 
     override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
         enforceRateLimit()
-    val url = buildString {
-        append(apiUrl)
-        // FIX: Dùng trực tiếp `page` vì đã setFirstPage(0)
-        append("/search?p=$page")
+        val url = buildString {
+            append(apiUrl)
+            append("/search?p=${page - 1}")
             if (!filter.query.isNullOrBlank()) {
                 append("&searchValue=${filter.query.urlEncoded()}")
             }
@@ -102,8 +95,8 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
             val tags = item.optJSONArray("category")?.let { arr ->
                 (0 until arr.length()).mapNotNullTo(mutableSetOf()) { index ->
                     val tagName = arr.getString(index)
-                    GTT_GENRES.find { it.first.equals(tagName, ignoreCase = true) }?.let { genrePair ->
-                        MangaTag(key = genrePair.second, title = genrePair.first, source = source)
+                    availableTags().find { it.title.equals(tagName, ignoreCase = true) }?.let { genrePair ->
+                        MangaTag(key = genrePair.key, title = genrePair.title, source = source)
                     }
                 }
             } ?: emptySet()
@@ -162,10 +155,10 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
 
         enforceRateLimit()
         val doc = webClient.httpGet(manga.publicUrl).parseHtml()
-        
+
         val detailTags = doc.select(".group-content > .v-chip-link").mapNotNullTo(mutableSetOf()) { el ->
-            GTT_GENRES.find { it.first.equals(el.text(), ignoreCase = true) }?.let {
-                MangaTag(key = it.second, title = it.first, source = source)
+            availableTags().find { it.title.equals(el.text(), ignoreCase = true) }?.let {
+                MangaTag(key = it.key, title = it.title, source = source)
             }
         }
 
@@ -234,51 +227,55 @@ internal class GocTruyenTranhVui(context: MangaLoaderContext) : PagedMangaParser
         }
     }
 
-    private val GTT_GENRES = listOf(
-        "Anime" to "ANI",
-        "Drama" to "DRA",
-        "Josei" to "JOS",
-        "Manhwa" to "MAW",
-        "One Shot" to "OSH",
-        "Shounen" to "SHO",
-        "Webtoons" to "WEB",
-        "Shoujo" to "SHJ",
-        "Harem" to "HAR",
-        "Ecchi" to "ECC",
-        "Mature" to "MAT",
-        "Slice of life" to "SOL",
-        "Isekai" to "ISE",
-        "Manga" to "MAG",
-        "Manhua" to "MAU",
-        "Hành Động" to "ACT",
-        "Phiêu Lưu" to "ADV",
-        "Hài Hước" to "COM",
-        "Võ Thuật" to "MAA",
-        "Huyền Bí" to "MYS",
-        "Lãng Mạn" to "ROM",
-        "Thể Thao" to "SPO",
-        "Học Đường" to "SCL",
-        "Lịch Sử" to "HIS",
-        "Kinh Dị" to "HOR",
-        "Siêu Nhiên" to "SUN",
-        "Bi Kịch" to "TRA",
-        "Trùng Sinh" to "RED",
-        "Game" to "GAM",
-        "Viễn Tưởng" to "FTS",
-        "Khoa Học" to "SCF",
-        "Truyện Màu" to "COI",
-        "Người Lớn" to "ADU",
-        "BoyLove" to "BBL",
-        "Hầm Ngục" to "DUN",
-        "Săn Bắn" to "HUNT",
-        "Ngôn Từ Nhạy Cảm" to "NTNC",
-        "Doujinshi" to "DOU",
-        "Bạo Lực" to "BLM",
-        "Ngôn Tình" to "NTT",
-        "Nữ Cường" to "NCT",
-        "Gender Bender" to "GDB",
-        "Murim" to "MRR",
-        "Leo Tháp" to "LTT",
-        "Nấu Ăn" to "COO"
+    /**
+     * NOTE: This function creates a new Set of MangaTags on every call, which is inefficient.
+     * A better approach is to declare a constant list (private val) and reuse it.
+     */
+    private fun availableTags() = arraySetOf(
+        MangaTag("Anime", "ANI", source),
+        MangaTag("Drama", "DRA", source),
+        MangaTag("Josei", "JOS", source),
+        MangaTag("Manhwa", "MAW", source),
+        MangaTag("One Shot", "OSH", source),
+        MangaTag("Shounen", "SHO", source),
+        MangaTag("Webtoons", "WEB", source),
+        MangaTag("Shoujo", "SHJ", source),
+        MangaTag("Harem", "HAR", source),
+        MangaTag("Ecchi", "ECC", source),
+        MangaTag("Mature", "MAT", source),
+        MangaTag("Slice of life", "SOL", source),
+        MangaTag("Isekai", "ISE", source),
+        MangaTag("Manga", "MAG", source),
+        MangaTag("Manhua", "MAU", source),
+        MangaTag("Hành Động", "ACT", source),
+        MangaTag("Phiêu Lưu", "ADV", source),
+        MangaTag("Hài Hước", "COM", source),
+        MangaTag("Võ Thuật", "MAA", source),
+        MangaTag("Huyền Bí", "MYS", source),
+        MangaTag("Lãng Mạn", "ROM", source),
+        MangaTag("Thể Thao", "SPO", source),
+        MangaTag("Học Đường", "SCL", source),
+        MangaTag("Lịch Sử", "HIS", source),
+        MangaTag("Kinh Dị", "HOR", source),
+        MangaTag("Siêu Nhiên", "SUN", source),
+        MangaTag("Bi Kịch", "TRA", source),
+        MangaTag("Trùng Sinh", "RED", source),
+        MangaTag("Game", "GAM", source),
+        MangaTag("Viễn Tưởng", "FTS", source),
+        MangaTag("Khoa Học", "SCF", source),
+        MangaTag("Truyện Màu", "COI", source),
+        MangaTag("Người Lớn", "ADU", source),
+        MangaTag("BoyLove", "BBL", source),
+        MangaTag("Hầm Ngục", "DUN", source),
+        MangaTag("Săn Bắn", "HUNT", source),
+        MangaTag("Ngôn Từ Nhạy Cảm", "NTNC", source),
+        MangaTag("Doujinshi", "DOU", source),
+        MangaTag("Bạo Lực", "BLM", source),
+        MangaTag("Ngôn Tình", "NTT", source),
+        MangaTag("Nữ Cường", "NCT", source),
+        MangaTag("Gender Bender", "GDB", source),
+        MangaTag("Murim", "MRR", source),
+        MangaTag("Leo Tháp", "LTT", source),
+        MangaTag("Nấu Ăn", "COO", source)
     )
 }
