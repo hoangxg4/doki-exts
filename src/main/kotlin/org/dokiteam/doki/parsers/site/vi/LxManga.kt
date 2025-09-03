@@ -1,6 +1,5 @@
 package org.dokiteam.doki.parsers.site.vi
 
-import okhttp3.Headers
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
@@ -14,17 +13,13 @@ import java.util.*
 internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.LXMANGA, 60) {
 
 	override val configKeyDomain = ConfigKey.Domain("lxmanga.my")
+    
+    // Kích hoạt cơ chế WebView để lấy cookie Cloudflare, phòng trường hợp cần thiết
+	override val isCloudflareProtected = true
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
 		keys.add(userAgentKey)
-	}
-
-	// Cung cấp header mặc định cho tất cả request của parser này
-	override fun getRequestHeaders(): Headers {
-		return Headers.Builder()
-			.add("Referer", "https://$domain/")
-			.build()
 	}
 
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
@@ -120,7 +115,7 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
 				rating = RATING_UNKNOWN,
-				contentRating = ContentRating.ADULT, // Sửa lỗi ở đây
+				contentRating = ContentRating.ADULT,
 				coverUrl = coverUrl,
 				tags = setOf(),
 				state = null,
@@ -183,11 +178,21 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 			val url = div.attr("data-src")
 			MangaPage(
 				id = generateUid(url),
-				url = url,
+				url = PROXY_URL_PREFIX + url.urlEncoded(),
 				preview = null,
 				source = source
 			)
 		}
+	}
+
+	// App sẽ gọi hàm này với URL "giả" chúng ta đã tạo
+	override suspend fun getPageUrl(page: MangaPage): String {
+		if (page.url.startsWith(PROXY_URL_PREFIX)) {
+			val realUrl = page.url.substringAfter(PROXY_URL_PREFIX).urlDecoded()
+			// Chỉ cần trả về URL thật. App sẽ dùng cookie đã có từ webClient để tải ảnh.
+			return realUrl
+		}
+		return page.url
 	}
 
 	private suspend fun availableTags(): Set<MangaTag> {
@@ -202,5 +207,9 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 				source = source,
 			)
 		}.toSet()
+	}
+
+	companion object {
+		private const val PROXY_URL_PREFIX = "lxmanga_image_proxy::"
 	}
 }
