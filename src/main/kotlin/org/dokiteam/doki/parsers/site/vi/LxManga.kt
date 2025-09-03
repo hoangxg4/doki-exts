@@ -122,17 +122,27 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 
 		val doc = webClient.httpGet(url).parseHtml()
 
-		// Cập nhật CSS selector cho danh sách truyện theo cấu trúc HTML mới
-		return doc.select("div.grid div.manga-vertical").map { div ->
-			val href = div.selectFirst("a[href^=/truyen/]")?.attrOrNull("href")
-				?: div.parseFailed("Không thể tìm thấy URL của Manga này!")
+		return doc.select("div.grid div.manga-vertical").mapNotNull { div ->
+			// Lấy element a chứa cả link và tiêu đề. Selector này ổn định cho cả truyện và novel.
+			val titleElement = div.selectFirst("div.p-2 a.text-ellipsis")
+			if (titleElement == null) {
+				// Bỏ qua item nếu không có cấu trúc hợp lệ (có thể là quảng cáo hoặc lỗi layout)
+				return@mapNotNull null
+			}
+
+			val href = titleElement.attr("href")
+			// Bỏ qua nếu href không phải link truyện hoặc novel
+			if (!href.startsWith("/truyen/") && !href.startsWith("/novel/")) {
+				return@mapNotNull null
+			}
+
 			val coverUrl = div.selectFirst("div.cover")?.let {
 				it.attrOrNull("data-bg") ?: it.attrOrNull("style")?.cssUrl()
 			}?.replace("s3.lxmanga.top", domain).orEmpty()
 
 			Manga(
 				id = generateUid(href),
-				title = div.selectFirst("div.p-2 a.text-ellipsis")?.text().orEmpty(),
+				title = titleElement.text(),
 				altTitles = emptySet(),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
