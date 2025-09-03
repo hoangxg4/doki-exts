@@ -1,43 +1,24 @@
 package org.dokiteam.doki.parsers.site.vi
 
-import okhttp3.Interceptor
-import okhttp3.Response
+import okhttp3.Headers
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
 import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
+import java.net.URLDecoder
 import java.text.SimpleDateFormat
 import java.util.*
 
 @MangaSourceParser("LXMANGA", "LXManga", "vi", type = ContentType.HENTAI)
-internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.LXMANGA, 60), Interceptor {
+internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.LXMANGA, 60) {
 
 	override val configKeyDomain = ConfigKey.Domain("lxmanga.my")
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
 		keys.add(userAgentKey)
-	}
-	
-	/**
-	 * Tự quản lý header cho parser này.
-	 * Hàm này sẽ được app tự động gọi cho MỌI request (lấy HTML, lấy ảnh,...).
-	 * Chúng ta thêm Referer ở đây để sửa lỗi 404 khi tải ảnh.
-	 */
-	override fun intercept(chain: Interceptor.Chain): Response {
-		val originalRequest = chain.request()
-
-		// Chỉ thêm Referer nếu request chưa có để tránh ghi đè.
-		if (originalRequest.header("Referer") == null) {
-			val newRequest = originalRequest.newBuilder()
-				.addHeader("Referer", "https://$domain/")
-				.build()
-			return chain.proceed(newRequest)
-		}
-		
-		return chain.proceed(originalRequest)
 	}
 
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
@@ -184,21 +165,22 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
 		val fullUrl = chapter.url.toAbsoluteUrl(domain)
 		val doc = webClient.httpGet(fullUrl).parseHtml()
-
 		val imageUrls = doc.select("div.text-center div.lazy[data-src]")
-		if (imageUrls.isEmpty()) {
-			throw Exception("Không tìm thấy ảnh nào. Có thể cần mua LXCoin để xem trên web.")
-		}
+		if (imageUrls.isEmpty()) throw Exception("Không tìm thấy ảnh nào.")
 		
-		return imageUrls.map { div ->
-			val url = div.attr("data-src")
-			MangaPage(
-				id = generateUid(url),
-				url = url,
-				preview = null,
-				source = source
-			)
+		return imageUrls.map {
+			val url = it.attr("data-src")
+			MangaPage(id = generateUid(url), url = url, source = source, preview = null)
 		}
+	}
+
+	override suspend fun getPageUrl(page: MangaPage): String {
+		val headers = Headers.Builder().add("Referer", "https://$domain/").build()
+		// Dùng webClient để thực hiện request HEAD, một request nhẹ chỉ để lấy header và xác thực.
+		// Nó sẽ trả về URL cuối cùng (sau khi redirect nếu có) để trình tải ảnh của app sử dụng.
+		val response = webClient.httpHead(page.url, extraHeaders = headers)
+		response.close()
+		return response.request.url.toString()
 	}
 
 	private suspend fun availableTags(): Set<MangaTag> {
