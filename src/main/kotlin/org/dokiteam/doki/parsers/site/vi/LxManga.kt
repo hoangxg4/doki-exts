@@ -120,7 +120,7 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
 				rating = RATING_UNKNOWN,
-				contentRating = ContentType.ADULT,
+				contentRating = ContentRating.ADULT, // Sửa lỗi ở đây
 				coverUrl = coverUrl,
 				tags = setOf(),
 				state = null,
