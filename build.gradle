@@ -64,6 +64,11 @@ dependencies {
 	api 'org.jsoup:jsoup:1.19.1'
 	implementation 'org.json:json:20240303'
 	implementation 'androidx.collection:collection:1.5.0'
+	// Server HTTP siêu nhẹ
+    implementation("org.nanohttpd:nanohttpd:2.3.1")
+    
+    // Client HTTP mạnh mẽ để gọi đi lấy ảnh
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
 	ksp project(':doki-ksp')
 
