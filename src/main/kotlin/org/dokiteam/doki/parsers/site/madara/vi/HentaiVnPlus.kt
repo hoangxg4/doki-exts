@@ -2,24 +2,16 @@ package org.dokiteam.doki.parsers.site.madara.vi
 
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
-import org.dokiteam.doki.parsers.exception.ParseException
 import org.dokiteam.doki.parsers.model.ContentRating
 import org.dokiteam.doki.parsers.model.ContentType
 import org.dokiteam.doki.parsers.model.Manga
-import org.dokiteam.doki.parsers.model.MangaChapter
 import org.dokiteam.doki.parsers.model.MangaListFilter
-import org.dokiteam.doki.parsers.model.MangaPage
 import org.dokiteam.doki.parsers.model.MangaParserSource
 import org.dokiteam.doki.parsers.model.MangaState
 import org.dokiteam.doki.parsers.model.SortOrder
 import org.dokiteam.doki.parsers.site.madara.MadaraParser
-import org.dokiteam.doki.parsers.util.generateUid // FIX: Thêm import
 import org.dokiteam.doki.parsers.util.oneOrThrowIfMany
 import org.dokiteam.doki.parsers.util.parseHtml
-import org.dokiteam.doki.parsers.util.requireSrc
-import org.dokiteam.doki.parsers.util.selectOrThrow
-import org.dokiteam.doki.parsers.util.toAbsoluteUrl // FIX: Thêm import
-import org.dokiteam.doki.parsers.util.toRelativeUrl
 import org.dokiteam.doki.parsers.util.urlEncoded
 
 @MangaSourceParser("HENTAIVNPLUS", "HentaiVN.plus", "vi", ContentType.HENTAI)
@@ -29,30 +21,6 @@ internal class HentaiVnPlus(context: MangaLoaderContext) :
 	override val tagPrefix = "the-loai/"
 	override val datePattern = "dd/MM/yyyy"
 	override val authorSearchSupported = true
-
-	// FIX: Override lại getPages để xử lý URL ảnh bị lỗi whitespace
-	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-		val fullUrl = chapter.url.toAbsoluteUrl(domain)
-		val doc = webClient.httpGet(fullUrl).parseHtml()
-
-		// Selector cho trang này là 'div.reading-content'
-		val root = doc.body().selectFirst("div.reading-content")
-			?: throw ParseException("Không tìm thấy khu vực đọc truyện. Thử đăng nhập nếu cần.", fullUrl)
-
-		// Selector cho từng ảnh là 'div.page-break'
-		return root.select("div.page-break").flatMap { div ->
-			div.selectOrThrow("img").map { img ->
-				// FIX: Thêm .trim() để loại bỏ khoảng trắng thừa từ URL
-				val url = img.requireSrc().trim().toRelativeUrl(domain)
-				MangaPage(
-					id = generateUid(url),
-					url = url,
-					preview = null,
-					source = source,
-				)
-			}
-		}
-	}
 
 	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val pages = page + 1
@@ -112,7 +80,7 @@ internal class HentaiVnPlus(context: MangaLoaderContext) :
 					MangaState.ONGOING -> append("on-going")
 					MangaState.FINISHED -> append("end")
 					MangaState.ABANDONED -> append("canceled")
-					MangaState.PAUSED -> append("on-hold") // FIX: Sửa lỗi chính tả từ 'M犢State'
+					MangaState.PAUSED -> append("on-hold")
 					MangaState.UPCOMING -> append("upcoming")
 					else -> throw IllegalArgumentException("$it not supported")
 				}
