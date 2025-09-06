@@ -13,13 +13,14 @@ import org.dokiteam.doki.parsers.model.MangaParserSource
 import org.dokiteam.doki.parsers.model.MangaState
 import org.dokiteam.doki.parsers.model.SortOrder
 import org.dokiteam.doki.parsers.site.madara.MadaraParser
+import org.dokiteam.doki.parsers.util.generateUid // FIX: Thêm import
 import org.dokiteam.doki.parsers.util.oneOrThrowIfMany
 import org.dokiteam.doki.parsers.util.parseHtml
 import org.dokiteam.doki.parsers.util.requireSrc
 import org.dokiteam.doki.parsers.util.selectOrThrow
+import org.dokiteam.doki.parsers.util.toAbsoluteUrl // FIX: Thêm import
 import org.dokiteam.doki.parsers.util.toRelativeUrl
 import org.dokiteam.doki.parsers.util.urlEncoded
-import org.jsoup.nodes.Document
 
 @MangaSourceParser("HENTAIVNPLUS", "HentaiVN.plus", "vi", ContentType.HENTAI)
 internal class HentaiVnPlus(context: MangaLoaderContext) :
@@ -111,7 +112,7 @@ internal class HentaiVnPlus(context: MangaLoaderContext) :
 					MangaState.ONGOING -> append("on-going")
 					MangaState.FINISHED -> append("end")
 					MangaState.ABANDONED -> append("canceled")
-					M犢State.PAUSED -> append("on-hold")
+					MangaState.PAUSED -> append("on-hold") // FIX: Sửa lỗi chính tả từ 'M犢State'
 					MangaState.UPCOMING -> append("upcoming")
 					else -> throw IllegalArgumentException("$it not supported")
 				}
