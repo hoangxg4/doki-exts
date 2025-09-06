@@ -712,7 +712,8 @@ internal abstract class MadaraParser(
 				)
 				return root.select(selectPage).flatMap { div ->
 					div.selectOrThrow("img").map { img ->
-						val url = img.requireSrc().toRelativeUrl(domain)
+						// FIX: Thêm .trim() để xử lý các URL có khoảng trắng thừa
+						val url = img.requireSrc().trim().toRelativeUrl(domain)
 						MangaPage(
 							id = generateUid(url),
 							url = url,
