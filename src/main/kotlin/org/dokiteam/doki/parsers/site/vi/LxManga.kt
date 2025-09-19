@@ -1,7 +1,5 @@
 package org.dokiteam.doki.parsers.site.vi
 
-import okhttp3.Interceptor
-import okhttp3.Response
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
@@ -12,33 +10,13 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 @MangaSourceParser("LXMANGA", "LXManga", "vi", type = ContentType.HENTAI)
-// Kế thừa Interceptor để tùy chỉnh header cho các request của riêng parser này
-internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.LXMANGA, 60), Interceptor {
+internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.LXMANGA, 60) {
 
 	override val configKeyDomain = ConfigKey.Domain("lxmanga.my")
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
 		keys.add(userAgentKey)
-	}
-
-	/**
-	 * Đây là hàm được admin xác nhận:
-	 * Nó sẽ được app tự động gọi cho MỌI request (tải HTML, tải ảnh,...) của parser này.
-	 * Chúng ta thêm Referer ở đây để sửa lỗi 404 khi tải ảnh.
-	 */
-	override fun intercept(chain: Interceptor.Chain): Response {
-		val originalRequest = chain.request()
-
-		// Chỉ thêm Referer nếu request chưa có để tránh ghi đè lên các header có sẵn.
-		if (originalRequest.header("Referer") == null) {
-			val newRequest = originalRequest.newBuilder()
-				.addHeader("Referer", "https://$domain/")
-				.build()
-			return chain.proceed(newRequest)
-		}
-		
-		return chain.proceed(originalRequest)
 	}
 
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
@@ -63,15 +41,18 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 		val url = buildString {
 			append("https://")
 			append(domain)
+
 			when {
 				!filter.query.isNullOrEmpty() -> {
 					append("/tim-kiem")
 					append("?filter[name]=")
 					append(filter.query.urlEncoded())
+
 					if (page > 1) {
 						append("&page=")
 						append(page)
 					}
+
 					append("&sort=")
 					append(
 						when (order) {
@@ -84,13 +65,16 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 						},
 					)
 				}
+
 				filter.tags.isNotEmpty() -> {
 					val tag = filter.tags.first()
 					append("/the-loai/")
 					append(tag.key)
+
 					append("?page=")
 					append(page)
 				}
+
 				else -> {
 					append("/danh-sach")
 					append("?sort=")
@@ -108,26 +92,46 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 					append(page)
 				}
 			}
+
+			if (filter.query.isNullOrEmpty()) {
+				append("&sort=")
+				when (order) {
+					SortOrder.POPULARITY -> append("-views")
+					SortOrder.UPDATED -> append("-updated_at")
+					SortOrder.NEWEST -> append("-created_at")
+					SortOrder.ALPHABETICAL -> append("name")
+					SortOrder.ALPHABETICAL_DESC -> append("-name")
+					else -> append("-updated_at")
+				}
+			}
+
+			if (filter.states.isNotEmpty()) {
+				append("&filter[status]=")
+				filter.states.forEach {
+					append(
+						when (it) {
+							MangaState.ONGOING -> "ongoing,"
+							MangaState.FINISHED -> "completed,"
+							MangaState.PAUSED -> "paused,"
+							else -> "ongoing,completed,paused"
+						},
+					)
+				}
+			}
 		}
 
 		val doc = webClient.httpGet(url).parseHtml()
-		val mangaListContainer = doc.selectFirst("div.grid div.manga-vertical")?.parent()
 
-		if (mangaListContainer == null) {
-			return emptyList()
-		}
-
-		return mangaListContainer.children().mapNotNull { div ->
-			val titleElement = div.selectFirst("a.text-ellipsis") ?: return@mapNotNull null
-			val href = titleElement.attr("href")
-			if (!href.startsWith("/truyen/") && !href.startsWith("/novel/")) return@mapNotNull null
-			val coverUrl = div.selectFirst("div.cover")?.let {
-				it.attrOrNull("data-bg") ?: it.attrOrNull("style")?.cssUrl()
-			}?.replace("s3.lxmanga.top", domain).orEmpty()
+		return doc.select("div.grid div.relative").map { div ->
+			val href = div.selectFirst("a[href^=/truyen/]")?.attrOrNull("href")
+				?: div.parseFailed("Không thể tìm thấy nguồn ảnh của Manga này!")
+			val coverUrl = div.selectFirstOrThrow("div.cover").let {
+				it.attrOrNull("data-bg") ?: it.attr("style").cssUrl()?.replace("s3.lxmanga.top", domain)
+			}.orEmpty()
 
 			Manga(
 				id = generateUid(href),
-				title = titleElement.text(),
+				title = div.select("div.p-2 a.text-ellipsis").text(),
 				altTitles = emptySet(),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
@@ -148,7 +152,9 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 			timeZone = TimeZone.getTimeZone("GMT+7")
 		}
 		val author = root.selectFirst("div.mt-2:contains(Tác giả) span a")?.textOrNull()
-		val altTitles = root.selectFirst("div.grow div:contains(Tên khác)")?.select("span a")?.mapToSet { it.text() } ?: emptySet()
+		val altTitles = root.selectFirst("div.grow div:contains(Tên khác)")
+			?.select("span a")?.mapToSet { it.text() }
+			?: emptySet()
 
 		return manga.copy(
 			altTitles = altTitles,
@@ -158,7 +164,11 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 				else -> null
 			},
 			tags = root.selectFirst("div.mt-2:contains(Thể loại)")?.select("a.bg-gray-500")?.mapToSet { a ->
-				MangaTag(key = a.attr("href").removeSuffix('/').substringAfterLast('/'), title = a.text(), source = source)
+				MangaTag(
+					key = a.attr("href").removeSuffix('/').substringAfterLast('/'),
+					title = a.text(),
+					source = source,
+				)
 			} ?: emptySet(),
 			authors = setOfNotNull(author),
 			description = root.selectFirst("meta[name=description]")?.attrOrNull("content"),
@@ -167,13 +177,15 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 					val href = a.attrAsRelativeUrl("href")
 					val name = a.selectFirst("span.text-ellipsis")?.text().orEmpty()
 					val dateText = a.parent()?.selectFirst("span.timeago")?.attr("datetime").orEmpty()
+					val scanlator = root.selectFirst("div.mt-2:has(span:first-child:contains(Thực hiện:)) span:last-child")?.textOrNull()
+
 					MangaChapter(
 						id = generateUid(href),
 						title = name,
 						number = (i + 1).toFloat(),
 						volume = 0,
 						url = href,
-						scanlator = null,
+						scanlator = scanlator,
 						uploadDate = chapterDateFormat.parseSafe(dateText),
 						branch = null,
 						source = source,
@@ -182,25 +194,25 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 		)
 	}
 
-	// getPages bây giờ chỉ cần lấy URL. Interceptor sẽ lo phần còn lại.
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
 		val fullUrl = chapter.url.toAbsoluteUrl(domain)
 		val doc = webClient.httpGet(fullUrl).parseHtml()
-
-		val imageUrls = doc.select("div.text-center div.lazy[data-src]")
-		if (imageUrls.isEmpty()) {
-			throw Exception("Không tìm thấy ảnh nào. Có thể cần mua LXCoin để xem trên web.")
-		}
-		
-		return imageUrls.map { div ->
-			val url = div.attr("data-src")
-			MangaPage(
-				id = generateUid(url),
-				url = url,
-				preview = null,
-				source = source
-			)
-		}
+		return doc.select("div.text-center div.lazy")
+			.mapNotNull { div ->
+				val url = div.attr("data-src")
+				if (url.endsWith(".jpg", ignoreCase = true) ||
+					url.endsWith(".png", ignoreCase = true)
+				) {
+					MangaPage(
+						id = generateUid(url),
+						url = url,
+						preview = null,
+						source = source,
+					)
+				} else {
+					throw Exception("Bạn cần phải nạp LXCoin mua code VIP để xem nội dung này trên trang Web!")
+				}
+			}
 	}
 
 	private suspend fun availableTags(): Set<MangaTag> {
