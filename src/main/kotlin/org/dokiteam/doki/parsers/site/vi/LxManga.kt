@@ -195,25 +195,33 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 	}
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-		val fullUrl = chapter.url.toAbsoluteUrl(domain)
-		val doc = webClient.httpGet(fullUrl).parseHtml()
-		return doc.select("div.text-center div.lazy")
-			.mapNotNull { div ->
-				val url = div.attr("data-src")
-				if (url.endsWith(".jpg", ignoreCase = true) ||
-					url.endsWith(".png", ignoreCase = true)
-				) {
-					MangaPage(
-						id = generateUid(url),
-						url = url,
-						preview = null,
-						source = source,
-					)
-				} else {
-					throw Exception("Bạn cần phải nạp LXCoin mua code VIP để xem nội dung này trên trang Web!")
-				}
-			}
-	}
+    val fullUrl = chapter.url.toAbsoluteUrl(domain)
+
+    // Thêm vào: Tạo headers cần thiết để bypass kiểm tra
+    val headers = HttpHeaders.Builder()
+        .add("Referer", fullUrl)
+        .add("Origin", "https://$domain")
+        .build()
+
+    val doc = webClient.httpGet(fullUrl).parseHtml()
+    return doc.select("div.text-center div.lazy")
+        .mapNotNull { div ->
+            val url = div.attr("data-src")
+            if (url.endsWith(".jpg", ignoreCase = true) ||
+                url.endsWith(".png", ignoreCase = true)
+            ) {
+                MangaPage(
+                    id = generateUid(url),
+                    url = url,
+                    preview = null,
+                    headers = headers, // Thêm vào: Truyền headers vào mỗi MangaPage
+                    source = source,
+                )
+            } else {
+                throw Exception("Bạn cần phải nạp LXCoin mua code VIP để xem nội dung này trên trang Web!")
+            }
+        }
+}
 
 	private suspend fun availableTags(): Set<MangaTag> {
 		val url = "https://$domain/the-loai"
