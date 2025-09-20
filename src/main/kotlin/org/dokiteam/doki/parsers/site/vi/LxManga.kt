@@ -1,5 +1,6 @@
 package org.dokiteam.doki.parsers.site.vi
 
+import okhttp3.Headers
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
@@ -8,13 +9,17 @@ import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import java.text.SimpleDateFormat
 import java.util.*
-import okhttp3.Headers
-import okhttp3.Request
 
 @MangaSourceParser("LXMANGA", "LXManga", "vi", type = ContentType.HENTAI)
 internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.LXMANGA, 60) {
 
 	override val configKeyDomain = ConfigKey.Domain("lxmanga.my")
+
+	// Thêm header vào tất cả request
+	override fun getRequestHeaders(): Headers = Headers.Builder()
+		.add("Referer", "https://$domain/")
+		.add("Origin", "https://$domain")
+		.build()
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
@@ -197,44 +202,25 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 	}
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-    val fullUrl = chapter.url.toAbsoluteUrl(domain) // URL này sẽ là Referer
-    val doc = webClient.httpGet(fullUrl).parseHtml()
-
-    return doc.select("div.text-center div.lazy")
-        .mapNotNull { div ->
-            val imageUrl = div.attr("data-src")
-            if (imageUrl.endsWith(".jpg", ignoreCase = true) ||
-                imageUrl.endsWith(".png", ignoreCase = true)
-            ) {
-                // [1] Gói URL ảnh và Referer vào một chuỗi, ngăn cách bởi dấu '|'
-                val combinedUrl = "$imageUrl|$fullUrl"
-                MangaPage(
-                    id = generateUid(imageUrl),
-                    url = combinedUrl, // Sử dụng chuỗi đã gói
-                    preview = null,
-                    source = source,
-                )
-            } else {
-                throw Exception("Bạn cần phải nạp LXCoin mua code VIP để xem nội dung này trên trang Web!")
-            }
-        }
-}
-
-	// Thêm hàm này vào trong class LxManga
-override fun imageRequest(page: MangaPage): Request {
-    // [2] Tách chuỗi đã gói để lấy lại URL ảnh và Referer
-    val (imageUrl, refererUrl) = page.url.split('|')
-
-    val imageHeaders = Headers.Builder()
-        .add("Referer", refererUrl)
-        .add("Origin", "https://$domain")
-        .build()
-
-    return Request.Builder()
-        .url(imageUrl)
-        .headers(imageHeaders)
-        .build()
-}
+		val fullUrl = chapter.url.toAbsoluteUrl(domain)
+		val doc = webClient.httpGet(fullUrl).parseHtml()
+		return doc.select("div.text-center div.lazy")
+			.mapNotNull { div ->
+				val url = div.attr("data-src")
+				if (url.endsWith(".jpg", ignoreCase = true) ||
+					url.endsWith(".png", ignoreCase = true)
+				) {
+					MangaPage(
+						id = generateUid(url),
+						url = url,
+						preview = null,
+						source = source,
+					)
+				} else {
+					throw Exception("Bạn cần phải nạp LXCoin mua code VIP để xem nội dung này trên trang Web!")
+				}
+			}
+	}
 
 	private suspend fun availableTags(): Set<MangaTag> {
 		val url = "https://$domain/the-loai"
