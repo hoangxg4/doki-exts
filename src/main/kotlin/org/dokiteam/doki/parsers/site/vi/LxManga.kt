@@ -8,11 +8,19 @@ import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import java.text.SimpleDateFormat
 import java.util.*
+import okhttp3.Headers
 
 @MangaSourceParser("LXMANGA", "LXManga", "vi", type = ContentType.HENTAI)
 internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, MangaParserSource.LXMANGA, 60) {
 
 	override val configKeyDomain = ConfigKey.Domain("lxmanga.my")
+
+	override val headers: Headers by lazy {
+        Headers.Builder()
+            .add("Referer", "https://$domain/")
+            .add("Origin", "https://$domain")
+            .build()
+	}
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
@@ -196,13 +204,6 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
     val fullUrl = chapter.url.toAbsoluteUrl(domain)
-
-    // Thêm vào: Tạo headers cần thiết để bypass kiểm tra
-    val headers = HttpHeaders.Builder()
-        .add("Referer", fullUrl)
-        .add("Origin", "https://$domain")
-        .build()
-
     val doc = webClient.httpGet(fullUrl).parseHtml()
     return doc.select("div.text-center div.lazy")
         .mapNotNull { div ->
@@ -214,7 +215,6 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
                     id = generateUid(url),
                     url = url,
                     preview = null,
-                    headers = headers, // Thêm vào: Truyền headers vào mỗi MangaPage
                     source = source,
                 )
             } else {
