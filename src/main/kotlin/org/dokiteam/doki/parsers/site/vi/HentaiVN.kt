@@ -18,7 +18,7 @@ import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.util.*
 
-// --- Data classes (không thay đổi) ---
+// --- DATA CLASSES ---
 @Serializable data class ApiResponse<T>(val data: List<T>, val page: Int? = null, val total: Int? = null)
 @Serializable data class MangaListItem(val id: Int, val title: String, val coverUrl: String, val authors: String? = null, val genres: List<GenreItem> = emptyList(), val blocked: Boolean = false)
 @Serializable data class GenreItem(val id: Int, val name: String)
@@ -27,17 +27,15 @@ import java.util.*
 @Serializable data class MangaDetails(val id: Int, val title: String, val alternativeTitles: List<String> = emptyList(), val coverUrl: String, val description: String?, val authors: List<AuthorItem> = emptyList(), val genres: List<GenreItem> = emptyList(), val uploader: Uploader? = null)
 @Serializable data class ChapterItem(val id: Int, val title: String, val readOrder: Int, @SerialName("createdAt") val createdAt: String)
 @Serializable data class ChapterDetails(@SerialName("pages") val imageUrls: List<String>)
-// --- User class không cần nữa vì đã bỏ login ---
-// @Serializable data class User(val id: Int, val username: String, val displayName: String? = null)
 
 
 @MangaSourceParser("HENTAIVN", "HentaiVN", "vi", type = ContentType.HENTAI)
 internal class HentaiVNParser(context: MangaLoaderContext) : AbstractMangaParser(context, MangaParserSource.HENTAIVN) {
+    // Lưu ý: Việc xác thực (login) được xử lý tự động bởi CookieJar của ứng dụng.
+    // Parser này không cần chứa logic login/logout.
 
     override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain("hentaivn.su")
     private val json = Json { ignoreUnknownKeys = true }
-
-    // --- CÁC HÀM ĐĂNG NHẬP ĐÃ BỊ XÓA VÌ KHÔNG TƯƠNG THÍCH VỚI ABSTRACTMANGASEPARSER ---
 
     override suspend fun getFavicons(): Favicons = Favicons(
         listOf(Favicon("https://raw.githubusercontent.com/dragonx943/listcaidaubuoi/refs/heads/main/hentaivn.png", 512, null)),
@@ -49,7 +47,12 @@ internal class HentaiVNParser(context: MangaLoaderContext) : AbstractMangaParser
         keys.add(userAgentKey)
     }
 
-    override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.UPDATED)
+    override val availableSortOrders: Set<SortOrder> = EnumSet.of(
+        SortOrder.UPDATED,
+        SortOrder.POPULARITY,
+        SortOrder.RATING,
+        SortOrder.NEWEST
+    )
 
     override val filterCapabilities: MangaListFilterCapabilities = MangaListFilterCapabilities(
         isMultipleTagsSupported = true,
@@ -61,18 +64,26 @@ internal class HentaiVNParser(context: MangaLoaderContext) : AbstractMangaParser
     )
 
     override suspend fun getList(offset: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
-        val page = (offset / 24f).toIntUp() + 1
+        val page = (offset / 24f).toIntUp() + 1 
 
         val apiUrl = buildString {
             append("/api/library/")
             when {
-                !filter.query.isNullOrEmpty() -> append("search?q=${filter.query.urlEncoded()}&page=$page")
-                // FIX: Sửa lại logic lọc, chỉ dùng filter.tags, không dùng excludedTags
+                !filter.query.isNullOrEmpty() -> {
+                    append("search?q=${filter.query.urlEncoded()}&page=$page")
+                }
+                // Giả sử filter.excludedTags không tồn tại trong framework của bạn dựa trên lỗi build
                 filter.tags.isNotEmpty() -> {
                     val included = filter.tags.joinToString(",") { "(${it.key},1)" }
                     append("advanced-search?g=${included.urlEncoded()}&page=$page")
                 }
-                else -> append("latest?page=$page")
+                else -> {
+                    when (order) {
+                        SortOrder.NEWEST -> append("new?page=$page")
+                        SortOrder.POPULARITY, SortOrder.RATING -> append("trending?page=$page")
+                        else -> append("latest?page=$page")
+                    }
+                }
             }
         }.toAbsoluteUrl(domain)
 
@@ -100,41 +111,30 @@ internal class HentaiVNParser(context: MangaLoaderContext) : AbstractMangaParser
             )
         }
     }
-
+    
     override suspend fun getDetails(manga: Manga): Manga = coroutineScope {
         val mangaId = manga.url.substringAfterLast('/')
-        
         val detailsDeferred = async {
             val apiUrl = "/api/manga/$mangaId".toAbsoluteUrl(domain)
             val responseJson = webClient.httpGet(apiUrl).body!!.string()
             json.decodeFromString<MangaDetails>(responseJson)
         }
-        
-        val chaptersDeferred = async {
-            fetchChaptersFromApi(mangaId)
-        }
-
+        val chaptersDeferred = async { fetchChaptersFromApi(mangaId) }
         val details = detailsDeferred.await()
         val chapters = chaptersDeferred.await()
-
         manga.copy(
             altTitles = details.alternativeTitles.toSet(),
             authors = details.authors.mapToSet { it.name },
             description = details.description ?: "",
-            tags = details.genres.mapToSet { genre ->
-                MangaTag(genre.name, genre.id.toString(), source)
-            },
+            tags = details.genres.mapToSet { genre -> MangaTag(genre.name, genre.id.toString(), source) },
             chapters = chapters.map { it.copy(scanlator = details.uploader?.name) }
         )
     }
-    
     private suspend fun fetchChaptersFromApi(mangaId: String): List<MangaChapter> {
         val apiUrl = "/api/manga/$mangaId/chapters".toAbsoluteUrl(domain)
-        
         return try {
             val responseJson = webClient.httpGet(apiUrl).body!!.string()
             val chapterItems = json.decodeFromString<List<ChapterItem>>(responseJson)
-            
             chapterItems.map { chapterItem ->
                 MangaChapter(
                     id = generateUid(chapterItem.id.toString()),
@@ -143,42 +143,29 @@ internal class HentaiVNParser(context: MangaLoaderContext) : AbstractMangaParser
                     url = "/chapter/${chapterItem.id}",
                     uploadDate = parseDate(chapterItem.createdAt) ?: 0L,
                     source = source,
-                    scanlator = null, 
+                    scanlator = null,
                     volume = 0,
                     branch = null
                 )
             }
-        } catch (e: Exception) {
-            emptyList()
-        }
+        } catch (e: Exception) { emptyList() }
     }
-
     override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
         val chapterId = chapter.url.substringAfterLast('/')
         val apiUrl = "/api/chapter/$chapterId".toAbsoluteUrl(domain)
         val responseJson = webClient.httpGet(apiUrl).body!!.string()
         val chapterData = json.decodeFromString<ChapterDetails>(responseJson)
-
         return chapterData.imageUrls.map { imageUrl ->
-            MangaPage(
-                id = generateUid(imageUrl),
-                url = imageUrl.toAbsoluteUrl(domain),
-                source = source,
-                preview = null
-            )
+            MangaPage(id = generateUid(imageUrl), url = imageUrl.toAbsoluteUrl(domain), source = source, preview = null)
         }
     }
-
     private var tagCache: ArrayMap<String, MangaTag>? = null
     private val mutex = Mutex()
-	
     private suspend fun getOrCreateTagMap(): Map<String, MangaTag> = mutex.withLock {
         tagCache?.let { return@withLock it }
         val apiUrl = "/api/tag/genre".toAbsoluteUrl(domain)
-        
         val responseJson = webClient.httpGet(apiUrl).body!!.string()
         val genres = json.decodeFromString<List<GenreItem>>(responseJson)
-
         val tagMap = ArrayMap<String, MangaTag>()
         for (genre in genres) {
             tagMap[genre.name] = MangaTag(title = genre.name, key = genre.id.toString(), source = source)
@@ -186,7 +173,6 @@ internal class HentaiVNParser(context: MangaLoaderContext) : AbstractMangaParser
         tagCache = tagMap
         return@withLock tagMap
     }
-
     private fun parseDate(dateStr: String?): Long? {
         if (dateStr == null) return null
         val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSSS'Z'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
