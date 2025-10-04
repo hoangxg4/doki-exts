@@ -25,5 +25,5 @@ jobs:
 
       - name: Trigger JitPack via metadata
         run: |
-          curl -s "https://jitpack.io/com/github/hoangxg4/doki-exts/-SNAPSHOT/maven-metadata.xml" \
+          curl -s "https://jitpack.io/com/github/hoangxg4/doki-exts/main-SNAPSHOT/maven-metadata.xml." \
             -o /dev/null
