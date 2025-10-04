@@ -1,4 +1,4 @@
-package org.koitharu.kotatsu.parsers.site.vi
+package org.dokiteam.doki.parsers.site.vi
 
 import androidx.collection.ArrayMap
 import kotlinx.coroutines.async
@@ -7,24 +7,27 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
-import org.koitharu.kotatsu.parsers.MangaLoaderContext
-import org.koitharu.kotatsu.parsers.MangaParserAuthProvider
-import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.config.ConfigKey
-import org.koitharu.kotatsu.parsers.core.AbstractMangaParser
-import org.koitharu.kotatsu.parsers.exception.AuthRequiredException
-import org.koitharu.kotatsu.parsers.model.*
-import org.koitharu.kotatsu.parsers.util.*
-import org.koitharu.kotatsu.parsers.util.json.*
+import org.dokiteam.doki.parsers.MangaLoaderContext
+import org.dokiteam.doki.parsers.MangaParserAuthProvider
+import org.dokiteam.doki.parsers.MangaSourceParser
+import org.dokiteam.doki.parsers.config.ConfigKey
+import org.dokiteam.doki.parsers.core.AbstractMangaParser
+import org.dokiteam.doki.parsers.exception.AuthRequiredException
+import org.dokiteam.doki.parsers.model.*
+import org.dokiteam.doki.parsers.util.*
+import org.dokiteam.doki.parsers.util.json.*
 import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.util.*
+
+// --- DATA CLASSES đã được loại bỏ để đơn giản hóa parser ---
 
 @MangaSourceParser("HENTAIVN", "HentaiVN", "vi", type = ContentType.HENTAI)
 internal class HentaiVNParser(context: MangaLoaderContext) :
     AbstractMangaParser(context, MangaParserSource.HENTAIVN), MangaParserAuthProvider {
 
     override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain("hentaivn.su")
+    // --- Biến json của kotlinx.serialization đã được loại bỏ ---
 
     // --- CÁC HÀM TỪ MangaParserAuthProvider ---
     override val authUrl: String
@@ -33,6 +36,7 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
     override suspend fun isAuthorized(): Boolean =
         context.cookieJar.getCookies(domain).any { it.name == "id" }
 
+    // FIX: Chuyển sang parse thủ công bằng JSONObject
     override suspend fun getUsername(): String {
         try {
             val response = webClient.httpGet("/api/user/me".toAbsoluteUrl(domain))
@@ -78,40 +82,37 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
     override suspend fun getList(offset: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
         val page = (offset / 24f).toIntUp() + 1
         
-        // FIX 1: Sửa lại cách dùng urlBuilder và buildUrl
-        val apiUrl = urlBuilder().run { 
-            addPathSegment("api")
-            addPathSegment("library")
+        val apiUrl = urlBuilder().run {
+            addPathSegments("api/library")
             when {
                 !filter.query.isNullOrEmpty() -> {
-                    addPathSegment("search")
+                    addPathSegments("search")
                     addQueryParameter("q", filter.query)
                 }
                 filter.tags.isNotEmpty() -> {
-                    addPathSegment("advanced-search")
+                    addPathSegments("advanced-search")
                     val included = filter.tags.joinToString(",") { "(${it.key},1)" }
                     addQueryParameter("g", included)
                 }
                 else -> {
                     when (order) {
-                        SortOrder.NEWEST -> addPathSegment("new")
-                        SortOrder.POPULARITY, SortOrder.RATING -> addPathSegment("trending")
-                        else -> addPathSegment("latest")
+                        SortOrder.NEWEST -> addPathSegments("new")
+                        SortOrder.POPULARITY, SortOrder.RATING -> addPathSegments("trending")
+                        else -> addPathSegments("latest")
                     }
                 }
             }
             addQueryParameter("page", page.toString())
-            build() // Dùng build() thay vì buildUrl()
+            build()
         }
 
         val responseJson = webClient.httpGet(apiUrl).body!!.string()
         
-        // FIX 2: Xử lý JSON linh hoạt hơn mà không cần 'asJsonArray'
         val mangaArray = if (responseJson.startsWith("[")) {
             JSONArray(responseJson)
         } else {
             JSONObject(responseJson).optJSONArray("data")
-        } ?: JSONArray() // Nếu không parse được thì trả về mảng rỗng
+        } ?: JSONArray()
 
         return mangaArray.mapJSONNotNull { jo ->
             val id = jo.optLong("id", -1L).takeIf { it != -1L } ?: return@mapJSONNotNull null
@@ -127,8 +128,7 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
                     MangaTag(genreJo.getString("name"), genreJo.getString("id"), source)
                 } ?: emptySet(),
                 source = source,
-                // FIX 3: Dùng thuộc tính có sẵn từ class cha
-                contentRating = sourceContentRating, 
+                contentRating = sourceContentRating,
                 altTitles = emptySet(),
                 rating = RATING_UNKNOWN,
                 state = null
@@ -197,7 +197,6 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
         
         val tagMap = ArrayMap<String, MangaTag>()
         
-        // FIX 4: Thay thế 'asSequenceOf' bằng vòng lặp for thông thường
         for (i in 0 until genres.length()) {
             val genre = genres.getJSONObject(i)
             val name = genre.getString("name")
