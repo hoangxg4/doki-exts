@@ -1,82 +1,124 @@
 import tasks.ReportGenerateTask
 
 plugins {
-	id 'java-library'
-	id 'org.jetbrains.kotlin.jvm' version '2.0.20'
-	id 'com.google.devtools.ksp' version '2.0.20-1.0.25'
-	id 'maven-publish'
+    id 'java-library'
+    id 'org.jetbrains.kotlin.jvm' version '2.0.20'
+    id 'com.google.devtools.ksp' version '2.0.20-1.0.25'
+    id 'maven-publish'
 }
 
 group = 'org.dokiteam'
 version = '1.0'
 
-test {
-	useJUnitPlatform()
+// 1. TẬP TRUNG QUẢN LÝ PHIÊN BẢN
+// Giúp dễ dàng nâng cấp và đồng bộ các thư viện
+ext {
+    kotlinVersion = '2.0.20'
+    kspVersion = '2.0.20-1.0.25'
+    coroutinesVersion = '1.10.2'
+    okhttpVersion = '4.12.0'
+    junitVersion = '5.10.1'
 }
 
-ksp {
-	arg("summaryOutputDir", "${projectDir}/.github")
+repositories {
+    mavenCentral()
+    google() // Thêm repo google() để lấy thư viện androidx
 }
 
-compileKotlin {
-	kotlinOptions {
-		freeCompilerArgs += [
-			'-opt-in=kotlin.RequiresOptIn',
-			'-opt-in=kotlin.contracts.ExperimentalContracts',
-			'-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi',
-			'-opt-in=org.dokiteam.doki.parsers.InternalParsersApi',
-		]
-	}
-}
-
-compileTestKotlin {
-	kotlinOptions {
-		freeCompilerArgs += [
-			'-opt-in=kotlin.RequiresOptIn',
-			'-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi',
-			'-opt-in=org.dokiteam.doki.parsers.InternalParsersApi',
-		]
-	}
-}
-
-kotlin {
-	jvmToolchain(8)
-	explicitApi = 'warning'
-	sourceSets {
-		main.kotlin.srcDirs += 'build/generated/ksp/main/kotlin'
-	}
-}
-
-afterEvaluate {
-	publishing {
-		publications {
-			mavenJava(MavenPublication) {
-				from components.java
-			}
-		}
-	}
+java {
+    // 3. NÂNG CẤP JAVA TOOLCHAIN
+    // Kotlin 2.0 và các thư viện hiện đại hoạt động tốt nhất với JDK 17 (LTS)
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
 }
 
 dependencies {
-	implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2'
-	implementation 'com.squareup.okhttp3:okhttp:4.12.0'
-	implementation 'com.squareup.okio:okio:3.11.0'
-	api 'org.jsoup:jsoup:1.19.1'
-	implementation 'org.json:json:20240303'
-	implementation 'androidx.collection:collection:1.5.0'
-	// Server HTTP siêu nhẹ
-    implementation("org.nanohttpd:nanohttpd:2.3.1")
+    // Kotlin & Coroutines
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion"
+
+    // Networking
+    implementation "com.squareup.okhttp3:okhttp:$okhttpVersion"
+    implementation 'com.squareup.okio:okio:3.11.0'
     
-    // Client HTTP mạnh mẽ để gọi đi lấy ảnh
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // Parsing
+    api 'org.jsoup:jsoup:1.19.1'
+    implementation 'org.json:json:20240303'
+    
+    // Utilities & Server
+    implementation 'androidx.collection:collection:1.5.0'
+    implementation 'org.nanohttpd:nanohttpd:2.3.1'
 
-	ksp project(':doki-ksp')
+    // KSP
+    ksp project(':doki-ksp')
 
-	testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.1'
-	testImplementation 'org.junit.jupiter:junit-jupiter-engine:5.10.1'
-	testImplementation 'org.junit.jupiter:junit-jupiter-params:5.10.1'
-	testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2'
-	testImplementation 'io.webfolder:quickjs:1.1.0'
+    // Testing
+    testImplementation "org.junit.jupiter:junit-jupiter-api:$junitVersion"
+    testImplementation "org.junit.jupiter:junit-jupiter-engine:$junitVersion"
+    testImplementation "org.junit.jupiter:junit-jupiter-params:$junitVersion"
+    testImplementation "org.jetbrains.kotlinx:kotlinx-coroutines-test:$coroutinesVersion"
+    testImplementation 'io.webfolder:quickjs:1.1.0'
 }
 
-tasks.register('generateTestsReport', ReportGenerateTask)
+ksp {
+    arg("summaryOutputDir", "${projectDir}/.github")
+}
+
+kotlin {
+    explicitApi = 'warning'
+    sourceSets {
+        // Thêm thư mục mã nguồn do KSP tạo ra
+        main.kotlin.srcDirs += 'build/generated/ksp/main/kotlin'
+    }
+}
+
+// 2. TỐI ƯU KOTLIN COMPILE OPTIONS
+// Áp dụng chung cho tất cả task compile Kotlin, tránh lặp lại code
+tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+    kotlinOptions {
+        freeCompilerArgs += [
+                '-opt-in=kotlin.RequiresOptIn',
+                '-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi',
+                '-opt-in=org.dokiteam.doki.parsers.InternalParsersApi',
+        ]
+    }
+}
+
+// Thêm option riêng cho compileKotlin (không áp dụng cho test)
+compileKotlin {
+    kotlinOptions {
+        freeCompilerArgs += '-opt-in=kotlin.contracts.ExperimentalContracts'
+    }
+}
+
+test {
+    useJUnitPlatform()
+    // 5. CẤU HÌNH ĐỂ TASK REPORT LUÔN CHẠY SAU KHI TEST XONG
+    finalizedBy 'generateTestsReport'
+}
+
+// 4. CẤU HÌNH CHI TIẾT CHO CUSTOM TASK
+tasks.register('generateTestsReport', ReportGenerateTask) {
+    // Giả định ReportGenerateTask có các thuộc tính `testResultDir` và `outputFile`
+    // Bạn cần thay đổi tên thuộc tính nếu thực tế khác
+    
+    description = 'Generates a custom report from JUnit test results.'
+    group = 'verification'
+    
+    // INPUT: Thư mục chứa kết quả test XML
+    testResultDir = layout.buildDirectory.dir('test-results/test')
+    
+    // OUTPUT: File report sẽ được tạo ra
+    outputFile = layout.buildDirectory.file('reports/tests/customTestReport.html')
+}
+
+// Publishing (giữ nguyên)
+afterEvaluate {
+    publishing {
+        publications {
+            mavenJava(MavenPublication) {
+                from components.java
+            }
+        }
+    }
+}
