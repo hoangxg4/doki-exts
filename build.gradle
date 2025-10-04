@@ -41,7 +41,7 @@ compileTestKotlin {
 }
 
 kotlin {
-	jvmToolchain(17)
+	jvmToolchain(8)
 	explicitApi = 'warning'
 	sourceSets {
 		main.kotlin.srcDirs += 'build/generated/ksp/main/kotlin'
