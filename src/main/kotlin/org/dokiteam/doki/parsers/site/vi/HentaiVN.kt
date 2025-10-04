@@ -1,24 +1,24 @@
-package org.dokiteam.doki.parsers.site.vi
+package org.koitharu.kotatsu.parsers.site.vi
 
 import androidx.collection.ArrayMap
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.json.JSONArray
 import org.json.JSONObject
-import org.dokiteam.doki.parsers.MangaLoaderContext
-import org.dokiteam.doki.parsers.MangaParserAuthProvider
-import org.dokiteam.doki.parsers.MangaSourceParser
-import org.dokiteam.doki.parsers.config.ConfigKey
-import org.dokiteam.doki.parsers.core.AbstractMangaParser
-import org.dokiteam.doki.parsers.exception.AuthRequiredException
-import org.dokiteam.doki.parsers.model.*
-import org.dokiteam.doki.parsers.util.*
-import org.dokiteam.doki.parsers.util.json.*
+import org.koitharu.kotatsu.parsers.MangaLoaderContext
+import org.koitharu.kotatsu.parsers.MangaParserAuthProvider
+import org.koitharu.kotatsu.parsers.MangaSourceParser
+import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.AbstractMangaParser
+import org.koitharu.kotatsu.parsers.exception.AuthRequiredException
+import org.koitharu.kotatsu.parsers.model.*
+import org.koitharu.kotatsu.parsers.util.*
+import org.koitharu.kotatsu.parsers.util.json.*
 import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.util.*
-
 
 @MangaSourceParser("HENTAIVN", "HentaiVN", "vi", type = ContentType.HENTAI)
 internal class HentaiVNParser(context: MangaLoaderContext) :
@@ -27,7 +27,6 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
     override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain("hentaivn.su")
 
     // --- CÁC HÀM TỪ MangaParserAuthProvider ---
-
     override val authUrl: String
         get() = domain
 
@@ -49,9 +48,7 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
         }
     }
 
-
     // --- CÁC HÀM PARSER CƠ BẢN ---
-
     override suspend fun getFavicons(): Favicons = Favicons(
         listOf(Favicon("https://raw.githubusercontent.com/dragonx943/listcaidaubuoi/refs/heads/main/hentaivn.png", 512, null)),
         domain
@@ -80,7 +77,11 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
 
     override suspend fun getList(offset: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
         val page = (offset / 24f).toIntUp() + 1
-        val apiUrl = urlBuilder("api", "library").run {
+        
+        // FIX 1: Sửa lại cách dùng urlBuilder và buildUrl
+        val apiUrl = urlBuilder().run { 
+            addPathSegment("api")
+            addPathSegment("library")
             when {
                 !filter.query.isNullOrEmpty() -> {
                     addPathSegment("search")
@@ -100,11 +101,17 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
                 }
             }
             addQueryParameter("page", page.toString())
-            buildUrl()
+            build() // Dùng build() thay vì buildUrl()
         }
 
-        val response = webClient.httpGet(apiUrl).parseJson()
-        val mangaArray = response.optJSONArray("data") ?: response.asJsonArray()
+        val responseJson = webClient.httpGet(apiUrl).body!!.string()
+        
+        // FIX 2: Xử lý JSON linh hoạt hơn mà không cần 'asJsonArray'
+        val mangaArray = if (responseJson.startsWith("[")) {
+            JSONArray(responseJson)
+        } else {
+            JSONObject(responseJson).optJSONArray("data")
+        } ?: JSONArray() // Nếu không parse được thì trả về mảng rỗng
 
         return mangaArray.mapJSONNotNull { jo ->
             val id = jo.optLong("id", -1L).takeIf { it != -1L } ?: return@mapJSONNotNull null
@@ -120,7 +127,8 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
                     MangaTag(genreJo.getString("name"), genreJo.getString("id"), source)
                 } ?: emptySet(),
                 source = source,
-                contentRating = ContentType.HENTAI.toContentRating(),
+                // FIX 3: Dùng thuộc tính có sẵn từ class cha
+                contentRating = sourceContentRating, 
                 altTitles = emptySet(),
                 rating = RATING_UNKNOWN,
                 state = null
@@ -130,7 +138,6 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
     
     override suspend fun getDetails(manga: Manga): Manga = coroutineScope {
         val mangaId = manga.url.substringAfterLast('/')
-        
         val detailsDeferred = async {
             webClient.httpGet("/api/manga/$mangaId".toAbsoluteUrl(domain)).parseJson()
         }
@@ -186,10 +193,13 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
         tagCache?.let { return@withLock it }
         val apiUrl = "/api/tag/genre".toAbsoluteUrl(domain)
         
-        val responseJson = webClient.httpGet(apiUrl).parseJsonArray()
+        val genres = webClient.httpGet(apiUrl).parseJsonArray()
         
         val tagMap = ArrayMap<String, MangaTag>()
-        for (genre in responseJson.asSequenceOf<JSONObject>()) {
+        
+        // FIX 4: Thay thế 'asSequenceOf' bằng vòng lặp for thông thường
+        for (i in 0 until genres.length()) {
+            val genre = genres.getJSONObject(i)
             val name = genre.getString("name")
             val id = genre.getString("id")
             tagMap[name] = MangaTag(title = name, key = id, source = source)
