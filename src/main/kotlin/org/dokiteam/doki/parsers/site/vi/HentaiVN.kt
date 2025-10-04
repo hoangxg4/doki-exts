@@ -1,11 +1,8 @@
 package org.dokiteam.doki.parsers.site.vi
 
-// --- CÁC IMPORT BỊ THIẾU ĐÃ ĐƯỢC THÊM VÀO ĐÂY ---
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-// ----------------------------------------------------
-
 import androidx.collection.ArrayMap
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -21,14 +18,12 @@ import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.util.*
 
-// Data classes giữ nguyên như trước, giờ sẽ hoạt động vì đã có import @Serializable
 @Serializable
 data class ApiResponse<T>(
     val data: List<T>,
     val page: Int? = null,
     val total: Int? = null
 )
-// ... (Các data class khác giữ nguyên)
 @Serializable
 data class MangaListItem(
     val id: Int,
@@ -81,10 +76,10 @@ data class ChapterDetails(
 
 @MangaSourceParser("HENTAIVN", "HentaiVN", "vi", type = ContentType.HENTAI)
 internal class HentaiVNParser(context: MangaLoaderContext) : AbstractMangaParser(context, MangaParserSource.HENTAIVN) {
+
+    // FIX: Bỏ https:// khỏi domain
+    override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain("hentaivn.su")
     
-    // Toàn bộ phần logic bên dưới giữ nguyên như phiên bản trước
-    // Nó sẽ hoạt động sau khi bạn đã thêm dependency và import
-    override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain("https://hentaivn.su")
     private val json = Json { ignoreUnknownKeys = true }
 
     override suspend fun getFavicons(): Favicons = Favicons(
