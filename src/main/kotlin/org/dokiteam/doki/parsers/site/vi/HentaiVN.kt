@@ -54,7 +54,8 @@ data class MangaDetails(
     val title: String,
     val alternativeTitles: List<String> = emptyList(),
     val coverUrl: String,
-    val description: String,
+    // FIX 1: Cho phép description có thể là null
+    val description: String?,
     val authors: List<AuthorItem> = emptyList(),
     val genres: List<GenreItem> = emptyList(),
     val uploader: Uploader? = null
@@ -77,9 +78,7 @@ data class ChapterDetails(
 @MangaSourceParser("HENTAIVN", "HentaiVN", "vi", type = ContentType.HENTAI)
 internal class HentaiVNParser(context: MangaLoaderContext) : AbstractMangaParser(context, MangaParserSource.HENTAIVN) {
 
-    // FIX: Bỏ https:// khỏi domain
     override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain("hentaivn.su")
-    
     private val json = Json { ignoreUnknownKeys = true }
 
     override suspend fun getFavicons(): Favicons = Favicons(
@@ -161,7 +160,8 @@ internal class HentaiVNParser(context: MangaLoaderContext) : AbstractMangaParser
         manga.copy(
             altTitles = details.alternativeTitles.toSet(),
             authors = details.authors.mapToSet { it.name },
-            description = details.description,
+            // FIX 2: Xử lý trường hợp description là null, gán bằng chuỗi rỗng
+            description = details.description ?: "",
             tags = details.genres.mapToSet { genre ->
                 MangaTag(genre.name, genre.id.toString(), source)
             },
