@@ -18,15 +18,13 @@ import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.util.*
 
-// --- DATA CLASSES CUỐI CÙNG, KHỚP 100% VỚI API ---
-
+// --- DATA CLASSES (Không thay đổi) ---
 @Serializable
 data class ApiResponse<T>(
     val data: List<T>,
     val page: Int? = null,
     val total: Int? = null
 )
-
 @Serializable
 data class MangaListItem(
     val id: Int,
@@ -36,25 +34,21 @@ data class MangaListItem(
     val genres: List<GenreItem> = emptyList(),
     val blocked: Boolean = false
 )
-
 @Serializable
 data class GenreItem(
     val id: Int,
     val name: String
 )
-
 @Serializable
 data class AuthorItem(
     val id: Int,
     val name: String
 )
-
 @Serializable
 data class Uploader(
     val id: Int,
     val name: String
 )
-
 @Serializable
 data class MangaDetails(
     val id: Int,
@@ -66,7 +60,6 @@ data class MangaDetails(
     val genres: List<GenreItem> = emptyList(),
     val uploader: Uploader? = null
 )
-
 @Serializable
 data class ChapterItem(
     val id: Int,
@@ -75,13 +68,11 @@ data class ChapterItem(
     @SerialName("createdAt")
     val createdAt: String
 )
-
 @Serializable
 data class ChapterDetails(
-    @SerialName("pages") // Key trong JSON là "pages"
+    @SerialName("pages")
     val imageUrls: List<String>
 )
-
 
 @MangaSourceParser("HENTAIVN", "HentaiVN", "vi", type = ContentType.HENTAI)
 internal class HentaiVNParser(context: MangaLoaderContext) : AbstractMangaParser(context, MangaParserSource.HENTAIVN) {
@@ -114,7 +105,6 @@ internal class HentaiVNParser(context: MangaLoaderContext) : AbstractMangaParser
         val page = (offset / 18f).toIntUp() + 1
         val apiUrl = buildString {
             append("/api/")
-            // API tìm kiếm có thể khác, cần kiểm tra lại
             when {
                 !filter.query.isNullOrEmpty() -> append("manga/search?q=${filter.query.urlEncoded()}&page=$page")
                 filter.tags.isNotEmpty() -> {
@@ -125,8 +115,10 @@ internal class HentaiVNParser(context: MangaLoaderContext) : AbstractMangaParser
             }
         }.toAbsoluteUrl(domain)
 
-        val responseJson = webClient.httpGet(apiUrl).body
-        val mangaList = try {
+        // FIX: Chuyển Response Body thành String
+        val responseJson = webClient.httpGet(apiUrl).body!!.string()
+
+        val mangaList: List<MangaListItem> = try {
             json.decodeFromString<ApiResponse<MangaListItem>>(responseJson).data
         } catch (e: Exception) {
             json.decodeFromString<List<MangaListItem>>(responseJson)
@@ -155,7 +147,9 @@ internal class HentaiVNParser(context: MangaLoaderContext) : AbstractMangaParser
         
         val detailsDeferred = async {
             val apiUrl = "/api/manga/$mangaId".toAbsoluteUrl(domain)
-            json.decodeFromString<MangaDetails>(webClient.httpGet(apiUrl).body)
+            // FIX: Chuyển Response Body thành String
+            val responseJson = webClient.httpGet(apiUrl).body!!.string()
+            json.decodeFromString<MangaDetails>(responseJson)
         }
         
         val chaptersDeferred = async {
@@ -180,17 +174,18 @@ internal class HentaiVNParser(context: MangaLoaderContext) : AbstractMangaParser
         val apiUrl = "/api/manga/$mangaId/chapters".toAbsoluteUrl(domain)
         
         return try {
-            val responseJson = webClient.httpGet(apiUrl).body
+            // FIX: Chuyển Response Body thành String
+            val responseJson = webClient.httpGet(apiUrl).body!!.string()
             val chapterItems = json.decodeFromString<List<ChapterItem>>(responseJson)
             
-            // API trả về chapter theo readOrder, không cần reverse
             chapterItems.map { chapterItem ->
                 MangaChapter(
                     id = generateUid(chapterItem.id.toString()),
                     title = chapterItem.title,
                     number = chapterItem.readOrder.toFloat(),
                     url = "/chapter/${chapterItem.id}",
-                    uploadDate = parseDate(chapterItem.createdAt),
+                    // FIX: Cung cấp giá trị mặc định nếu date là null
+                    uploadDate = parseDate(chapterItem.createdAt) ?: 0L,
                     source = source,
                     scanlator = null, 
                     volume = 0,
@@ -205,8 +200,9 @@ internal class HentaiVNParser(context: MangaLoaderContext) : AbstractMangaParser
     override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
         val chapterId = chapter.url.substringAfterLast('/')
         val apiUrl = "/api/chapter/$chapterId".toAbsoluteUrl(domain)
-        val responseJson = webClient.httpGet(apiUrl).body
-        // Cập nhật để sử dụng ChapterDetails và trường imageUrls
+        
+        // FIX: Chuyển Response Body thành String
+        val responseJson = webClient.httpGet(apiUrl).body!!.string()
         val chapterData = json.decodeFromString<ChapterDetails>(responseJson)
 
         return chapterData.imageUrls.map { imageUrl ->
@@ -225,8 +221,11 @@ internal class HentaiVNParser(context: MangaLoaderContext) : AbstractMangaParser
     private suspend fun getOrCreateTagMap(): Map<String, MangaTag> = mutex.withLock {
         tagCache?.let { return@withLock it }
         val apiUrl = "/api/tag/genre".toAbsoluteUrl(domain)
-        val responseJson = webClient.httpGet(apiUrl).body
+        
+        // FIX: Chuyển Response Body thành String
+        val responseJson = webClient.httpGet(apiUrl).body!!.string()
         val genres = json.decodeFromString<List<GenreItem>>(responseJson)
+
         val tagMap = ArrayMap<String, MangaTag>()
         for (genre in genres) {
             tagMap[genre.name] = MangaTag(title = genre.name, key = genre.id.toString(), source = source)
