@@ -9,9 +9,11 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.dokiteam.doki.parsers.MangaLoaderContext
+import org.dokiteam.doki.parsers.MangaParserAuthProvider // <-- IMPORT MỚI
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
 import org.dokiteam.doki.parsers.core.AbstractMangaParser
+import org.dokiteam.doki.parsers.exception.AuthRequiredException // <-- IMPORT MỚI
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import java.text.ParseException
@@ -19,6 +21,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 // --- DATA CLASSES ---
+@Serializable data class User(val id: Int, val username: String, val displayName: String? = null)
 @Serializable data class ApiResponse<T>(val data: List<T>, val page: Int? = null, val total: Int? = null)
 @Serializable data class MangaListItem(val id: Int, val title: String, val coverUrl: String, val authors: String? = null, val genres: List<GenreItem> = emptyList(), val blocked: Boolean = false)
 @Serializable data class GenreItem(val id: Int, val name: String)
@@ -29,13 +32,43 @@ import java.util.*
 @Serializable data class ChapterDetails(@SerialName("pages") val imageUrls: List<String>)
 
 
+// FIX 1: Implement interface MangaParserAuthProvider
 @MangaSourceParser("HENTAIVN", "HentaiVN", "vi", type = ContentType.HENTAI)
-internal class HentaiVNParser(context: MangaLoaderContext) : AbstractMangaParser(context, MangaParserSource.HENTAIVN) {
-    // Lưu ý: Việc xác thực (login) được xử lý tự động bởi CookieJar của ứng dụng.
-    // Parser này không cần chứa logic login/logout.
+internal class HentaiVNParser(context: MangaLoaderContext) :
+    AbstractMangaParser(context, MangaParserSource.HENTAIVN), MangaParserAuthProvider {
 
     override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain("hentaivn.su")
     private val json = Json { ignoreUnknownKeys = true }
+
+    // --- CÁC HÀM TỪ MangaParserAuthProvider ---
+
+    // Cung cấp URL để app mở WebView đăng nhập
+    override val authUrl: String
+        get() = domain
+
+    // Kiểm tra xem cookie đăng nhập 'id' có tồn tại hay không
+    override suspend fun isAuthorized(): Boolean =
+        context.cookieJar.getCookies(domain).any { it.name == "id" }
+
+    // Lấy username từ API /api/user/me, nếu thất bại sẽ throw exception
+    override suspend fun getUsername(): String {
+        try {
+            val response = webClient.httpGet("/api/user/me".toAbsoluteUrl(domain))
+            if (response.isSuccessful) {
+                val userJson = response.body!!.string()
+                val user = json.decodeFromString<User>(userJson)
+                return user.displayName ?: user.username
+            } else {
+                throw IllegalStateException("Failed to get user info: ${response.code}")
+            }
+        } catch (e: Exception) {
+            // Throw exception theo đúng yêu cầu của framework
+            throw AuthRequiredException(source, e)
+        }
+    }
+
+
+    // --- CÁC HÀM PARSER CŨ (Không thay đổi) ---
 
     override suspend fun getFavicons(): Favicons = Favicons(
         listOf(Favicon("https://raw.githubusercontent.com/dragonx943/listcaidaubuoi/refs/heads/main/hentaivn.png", 512, null)),
@@ -64,16 +97,12 @@ internal class HentaiVNParser(context: MangaLoaderContext) : AbstractMangaParser
     )
 
     override suspend fun getList(offset: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
-        val page = (offset / 24f).toIntUp() + 1 
-
+        val page = (offset / 24f).toIntUp() + 1
         val apiUrl = buildString {
             append("/api/library/")
             when {
-                !filter.query.isNullOrEmpty() -> {
-                    append("search?q=${filter.query.urlEncoded()}&page=$page")
-                }
-                // Giả sử filter.excludedTags không tồn tại trong framework của bạn dựa trên lỗi build
-                filter.tags.isNotEmpty() -> {
+                !filter.query.isNullOrEmpty() -> append("search?q=${filter.query.urlEncoded()}&page=$page")
+                filter.tags.isNotEmpty() -> { // Bỏ điều kiện || filter.excludedTags.isNotEmpty()
                     val included = filter.tags.joinToString(",") { "(${it.key},1)" }
                     append("advanced-search?g=${included.urlEncoded()}&page=$page")
                 }
@@ -86,14 +115,12 @@ internal class HentaiVNParser(context: MangaLoaderContext) : AbstractMangaParser
                 }
             }
         }.toAbsoluteUrl(domain)
-
         val responseJson = webClient.httpGet(apiUrl).body!!.string()
         val mangaList: List<MangaListItem> = try {
             json.decodeFromString<ApiResponse<MangaListItem>>(responseJson).data
         } catch (e: Exception) {
             json.decodeFromString<List<MangaListItem>>(responseJson)
         }
-
         return mangaList.filterNot { it.blocked }.map { item ->
             Manga(
                 id = generateUid(item.id.toString()),
@@ -111,7 +138,7 @@ internal class HentaiVNParser(context: MangaLoaderContext) : AbstractMangaParser
             )
         }
     }
-    
+
     override suspend fun getDetails(manga: Manga): Manga = coroutineScope {
         val mangaId = manga.url.substringAfterLast('/')
         val detailsDeferred = async {
@@ -130,6 +157,7 @@ internal class HentaiVNParser(context: MangaLoaderContext) : AbstractMangaParser
             chapters = chapters.map { it.copy(scanlator = details.uploader?.name) }
         )
     }
+
     private suspend fun fetchChaptersFromApi(mangaId: String): List<MangaChapter> {
         val apiUrl = "/api/manga/$mangaId/chapters".toAbsoluteUrl(domain)
         return try {
@@ -150,6 +178,7 @@ internal class HentaiVNParser(context: MangaLoaderContext) : AbstractMangaParser
             }
         } catch (e: Exception) { emptyList() }
     }
+
     override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
         val chapterId = chapter.url.substringAfterLast('/')
         val apiUrl = "/api/chapter/$chapterId".toAbsoluteUrl(domain)
@@ -159,8 +188,10 @@ internal class HentaiVNParser(context: MangaLoaderContext) : AbstractMangaParser
             MangaPage(id = generateUid(imageUrl), url = imageUrl.toAbsoluteUrl(domain), source = source, preview = null)
         }
     }
+
     private var tagCache: ArrayMap<String, MangaTag>? = null
     private val mutex = Mutex()
+
     private suspend fun getOrCreateTagMap(): Map<String, MangaTag> = mutex.withLock {
         tagCache?.let { return@withLock it }
         val apiUrl = "/api/tag/genre".toAbsoluteUrl(domain)
@@ -173,6 +204,7 @@ internal class HentaiVNParser(context: MangaLoaderContext) : AbstractMangaParser
         tagCache = tagMap
         return@withLock tagMap
     }
+
     private fun parseDate(dateStr: String?): Long? {
         if (dateStr == null) return null
         val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSSS'Z'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
