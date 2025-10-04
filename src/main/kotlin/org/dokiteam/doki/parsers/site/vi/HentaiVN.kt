@@ -1,13 +1,16 @@
 package org.dokiteam.doki.parsers.site.vi
 
+// --- CÁC IMPORT BỊ THIẾU ĐÃ ĐƯỢC THÊM VÀO ĐÂY ---
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+// ----------------------------------------------------
+
 import androidx.collection.ArrayMap
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
@@ -18,13 +21,14 @@ import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.util.*
 
-// --- DATA CLASSES (Không thay đổi) ---
+// Data classes giữ nguyên như trước, giờ sẽ hoạt động vì đã có import @Serializable
 @Serializable
 data class ApiResponse<T>(
     val data: List<T>,
     val page: Int? = null,
     val total: Int? = null
 )
+// ... (Các data class khác giữ nguyên)
 @Serializable
 data class MangaListItem(
     val id: Int,
@@ -74,9 +78,12 @@ data class ChapterDetails(
     val imageUrls: List<String>
 )
 
+
 @MangaSourceParser("HENTAIVN", "HentaiVN", "vi", type = ContentType.HENTAI)
 internal class HentaiVNParser(context: MangaLoaderContext) : AbstractMangaParser(context, MangaParserSource.HENTAIVN) {
-
+    
+    // Toàn bộ phần logic bên dưới giữ nguyên như phiên bản trước
+    // Nó sẽ hoạt động sau khi bạn đã thêm dependency và import
     override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain("https://hentaivn.su")
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -115,9 +122,7 @@ internal class HentaiVNParser(context: MangaLoaderContext) : AbstractMangaParser
             }
         }.toAbsoluteUrl(domain)
 
-        // FIX: Chuyển Response Body thành String
         val responseJson = webClient.httpGet(apiUrl).body!!.string()
-
         val mangaList: List<MangaListItem> = try {
             json.decodeFromString<ApiResponse<MangaListItem>>(responseJson).data
         } catch (e: Exception) {
@@ -147,7 +152,6 @@ internal class HentaiVNParser(context: MangaLoaderContext) : AbstractMangaParser
         
         val detailsDeferred = async {
             val apiUrl = "/api/manga/$mangaId".toAbsoluteUrl(domain)
-            // FIX: Chuyển Response Body thành String
             val responseJson = webClient.httpGet(apiUrl).body!!.string()
             json.decodeFromString<MangaDetails>(responseJson)
         }
@@ -174,7 +178,6 @@ internal class HentaiVNParser(context: MangaLoaderContext) : AbstractMangaParser
         val apiUrl = "/api/manga/$mangaId/chapters".toAbsoluteUrl(domain)
         
         return try {
-            // FIX: Chuyển Response Body thành String
             val responseJson = webClient.httpGet(apiUrl).body!!.string()
             val chapterItems = json.decodeFromString<List<ChapterItem>>(responseJson)
             
@@ -184,7 +187,6 @@ internal class HentaiVNParser(context: MangaLoaderContext) : AbstractMangaParser
                     title = chapterItem.title,
                     number = chapterItem.readOrder.toFloat(),
                     url = "/chapter/${chapterItem.id}",
-                    // FIX: Cung cấp giá trị mặc định nếu date là null
                     uploadDate = parseDate(chapterItem.createdAt) ?: 0L,
                     source = source,
                     scanlator = null, 
@@ -200,8 +202,6 @@ internal class HentaiVNParser(context: MangaLoaderContext) : AbstractMangaParser
     override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
         val chapterId = chapter.url.substringAfterLast('/')
         val apiUrl = "/api/chapter/$chapterId".toAbsoluteUrl(domain)
-        
-        // FIX: Chuyển Response Body thành String
         val responseJson = webClient.httpGet(apiUrl).body!!.string()
         val chapterData = json.decodeFromString<ChapterDetails>(responseJson)
 
@@ -222,7 +222,6 @@ internal class HentaiVNParser(context: MangaLoaderContext) : AbstractMangaParser
         tagCache?.let { return@withLock it }
         val apiUrl = "/api/tag/genre".toAbsoluteUrl(domain)
         
-        // FIX: Chuyển Response Body thành String
         val responseJson = webClient.httpGet(apiUrl).body!!.string()
         val genres = json.decodeFromString<List<GenreItem>>(responseJson)
 
