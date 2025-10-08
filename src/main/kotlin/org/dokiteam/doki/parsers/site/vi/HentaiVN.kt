@@ -3,8 +3,9 @@ package org.dokiteam.doki.parsers.site.vi
 import androidx.collection.ArrayMap
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import org.json.JSONArray
 import org.json.JSONObject
 import org.dokiteam.doki.parsers.MangaLoaderContext
@@ -20,47 +21,43 @@ import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.util.*
 
-// --- DATA CLASSES đã được loại bỏ để đơn giản hóa parser ---
+private const val PAGE_SIZE = 24
+
+@Serializable 
+private data class User(val id: Int, val username: String, val displayName: String? = null)
 
 @MangaSourceParser("HENTAIVN", "HentaiVN", "vi", type = ContentType.HENTAI)
 internal class HentaiVNParser(context: MangaLoaderContext) :
     AbstractMangaParser(context, MangaParserSource.HENTAIVN), MangaParserAuthProvider {
 
     override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain("hentaivn.su")
-    // --- Biến json của kotlinx.serialization đã được loại bỏ ---
+    private val json = Json { ignoreUnknownKeys = true }
 
-    // --- CÁC HÀM TỪ MangaParserAuthProvider ---
     override val authUrl: String
         get() = domain
 
     override suspend fun isAuthorized(): Boolean =
         context.cookieJar.getCookies(domain).any { it.name == "id" }
 
-    // FIX: Chuyển sang parse thủ công bằng JSONObject
     override suspend fun getUsername(): String {
-        try {
-            val response = webClient.httpGet("/api/user/me".toAbsoluteUrl(domain))
-            if (response.isSuccessful) {
-                val userJson = response.body!!.string()
-                val userObject = JSONObject(userJson)
-                return userObject.optString("displayName", userObject.getString("username"))
-            } else {
-                throw IllegalStateException("Failed to get user info: ${response.code}")
-            }
-        } catch (e: Exception) {
-            throw AuthRequiredException(source, e)
+        val response = webClient.httpGet("/api/user/me".toAbsoluteUrl(domain))
+        if (response.isSuccessful) {
+            val userJson = response.body!!.string()
+            val user = json.decodeFromString<User>(userJson)
+            return user.displayName ?: user.username
+        } else {
+            throw AuthRequiredException(source, IllegalStateException("Failed to get user info: ${response.code}"))
         }
     }
 
-    // --- CÁC HÀM PARSER CƠ BẢN ---
     override suspend fun getFavicons(): Favicons = Favicons(
-        listOf(Favicon("https://raw.githubusercontent.com/dragonx943/listcaidaubuoi/refs/heads/main/hentaivn.png", 512, null)),
+        listOf(Favicon("https://hentaivn.su/favicon.ico", null, null)),
         domain
     )
 
     override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
         super.onCreateConfig(keys)
-        keys.add(userAgentKey)
+        // keys.add(userAgentKey) // Bỏ User-Agent khỏi source settings
     }
 
     override val availableSortOrders: Set<SortOrder> = EnumSet.of(
@@ -80,7 +77,7 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
     )
 
     override suspend fun getList(offset: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
-        val page = (offset / 24f).toIntUp() + 1
+        val page = (offset / PAGE_SIZE.toFloat()).toIntUp() + 1
         
         val apiUrl = urlBuilder().run {
             addPathSegments("api/library")
@@ -103,6 +100,7 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
                 }
             }
             addQueryParameter("page", page.toString())
+            addQueryParameter("limit", PAGE_SIZE.toString())
             build()
         }
 
@@ -159,21 +157,20 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
     
     private suspend fun fetchChaptersFromApi(mangaId: String): List<MangaChapter> {
         val apiUrl = "/api/manga/$mangaId/chapters".toAbsoluteUrl(domain)
-        return try {
-            webClient.httpGet(apiUrl).parseJsonArray().mapJSON { jo ->
-                MangaChapter(
-                    id = generateUid(jo.getLong("id")),
-                    title = jo.getString("title"),
-                    number = jo.getInt("readOrder").toFloat(),
-                    url = "/chapter/${jo.getLong("id")}",
-                    uploadDate = parseDate(jo.optString("createdAt", null)) ?: 0L,
-                    source = source,
-                    scanlator = null,
-                    volume = 0,
-                    branch = null
-                )
-            }
-        } catch (e: Exception) { emptyList() }
+        val responseJson = webClient.httpGet(apiUrl).body!!.string()
+        return webClient.httpGet(apiUrl).parseJsonArray().mapJSON { jo ->
+            MangaChapter(
+                id = generateUid(jo.getLong("id")),
+                title = jo.getString("title"),
+                number = jo.getInt("readOrder").toFloat(),
+                url = "/chapter/${jo.getLong("id")}",
+                uploadDate = parseDate(jo.optString("createdAt", null)) ?: 0L,
+                source = source,
+                scanlator = null,
+                volume = 0,
+                branch = null
+            )
+        }
     }
 
     override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
@@ -186,25 +183,18 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
         }
     }
 
-    private var tagCache: ArrayMap<String, MangaTag>? = null
-    private val mutex = Mutex()
-
-    private suspend fun getOrCreateTagMap(): Map<String, MangaTag> = mutex.withLock {
-        tagCache?.let { return@withLock it }
+    private suspend fun getOrCreateTagMap(): Map<String, MangaTag> {
         val apiUrl = "/api/tag/genre".toAbsoluteUrl(domain)
-        
         val genres = webClient.httpGet(apiUrl).parseJsonArray()
         
         val tagMap = ArrayMap<String, MangaTag>()
-        
         for (i in 0 until genres.length()) {
             val genre = genres.getJSONObject(i)
             val name = genre.getString("name")
             val id = genre.getString("id")
             tagMap[name] = MangaTag(title = name, key = id, source = source)
         }
-        tagCache = tagMap
-        return@withLock tagMap
+        return tagMap
     }
 
     private fun parseDate(dateStr: String?): Long? {
