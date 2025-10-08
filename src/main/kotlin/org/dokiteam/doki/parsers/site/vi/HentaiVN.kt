@@ -5,9 +5,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 import org.json.JSONArray
 import org.json.JSONObject
 import org.dokiteam.doki.parsers.MangaLoaderContext
@@ -25,34 +22,39 @@ import java.util.*
 
 private const val PAGE_SIZE = 24
 
-@Serializable
-private data class User(val id: Int, val username: String, val displayName: String? = null)
+// --- DATA CLASSES đã được loại bỏ hoàn toàn ---
 
 @MangaSourceParser("HENTAIVN", "HentaiVN", "vi", type = ContentType.HENTAI)
 internal class HentaiVNParser(context: MangaLoaderContext) :
     AbstractMangaParser(context, MangaParserSource.HENTAIVN), MangaParserAuthProvider {
 
     override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain("hentaivn.su")
-    private val json = Json { ignoreUnknownKeys = true }
 
+    // --- CÁC HÀM TỪ MangaParserAuthProvider ---
     override val authUrl: String
         get() = domain
 
     override suspend fun isAuthorized(): Boolean =
         context.cookieJar.getCookies(domain).any { it.name == "id" }
 
+    // FIX: Chuyển hoàn toàn sang org.json, không dùng data class
     override suspend fun getUsername(): String {
-        val response = webClient.httpGet("/api/user/me".toAbsoluteUrl(domain))
-        if (response.isSuccessful) {
-            val userJson = response.body!!.string()
-            val user = json.decodeFromString<User>(userJson)
-            return user.displayName ?: user.username
-        } else {
-            throw AuthRequiredException(source, IllegalStateException("Failed to get user info: ${response.code}"))
+        try {
+            val response = webClient.httpGet("/api/user/me".toAbsoluteUrl(domain))
+            if (response.isSuccessful) {
+                val userJson = response.body!!.string()
+                val userObject = JSONObject(userJson)
+                return userObject.optString("displayName", userObject.getString("username"))
+            } else {
+                throw IllegalStateException("Failed to get user info: ${response.code}")
+            }
+        } catch (e: Exception) {
+            throw AuthRequiredException(source, e)
         }
     }
 
-    // FIX: Sửa lại kích thước favicon từ null thành 32
+    // --- CÁC HÀM PARSER CƠ BẢN ---
+    // FIX: Cập nhật kích thước favicon thành 512
     override suspend fun getFavicons(): Favicons = Favicons(
         listOf(Favicon("https://hentaivn.su/favicon.ico", 512, null)),
         domain
@@ -60,7 +62,6 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
 
     override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
         super.onCreateConfig(keys)
-        // Bỏ User-Agent khỏi source settings
     }
 
     override val availableSortOrders: Set<SortOrder> = EnumSet.of(
@@ -160,20 +161,21 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
     
     private suspend fun fetchChaptersFromApi(mangaId: String): List<MangaChapter> {
         val apiUrl = "/api/manga/$mangaId/chapters".toAbsoluteUrl(domain)
-        val responseJson = webClient.httpGet(apiUrl).body!!.string()
-        return webClient.httpGet(apiUrl).parseJsonArray().mapJSON { jo ->
-            MangaChapter(
-                id = generateUid(jo.getLong("id")),
-                title = jo.getString("title"),
-                number = jo.getInt("readOrder").toFloat(),
-                url = "/chapter/${jo.getLong("id")}",
-                uploadDate = parseDate(jo.optString("createdAt", null)) ?: 0L,
-                source = source,
-                scanlator = null,
-                volume = 0,
-                branch = null
-            )
-        }
+        return try {
+            webClient.httpGet(apiUrl).parseJsonArray().mapJSON { jo ->
+                MangaChapter(
+                    id = generateUid(jo.getLong("id")),
+                    title = jo.getString("title"),
+                    number = jo.getInt("readOrder").toFloat(),
+                    url = "/chapter/${jo.getLong("id")}",
+                    uploadDate = parseDate(jo.optString("createdAt", null)) ?: 0L,
+                    source = source,
+                    scanlator = null,
+                    volume = 0,
+                    branch = null
+                )
+            }
+        } catch (e: Exception) { emptyList() }
     }
 
     override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
