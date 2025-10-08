@@ -3,6 +3,8 @@ package org.dokiteam.doki.parsers.site.vi
 import androidx.collection.ArrayMap
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -23,7 +25,7 @@ import java.util.*
 
 private const val PAGE_SIZE = 24
 
-@Serializable 
+@Serializable
 private data class User(val id: Int, val username: String, val displayName: String? = null)
 
 @MangaSourceParser("HENTAIVN", "HentaiVN", "vi", type = ContentType.HENTAI)
@@ -50,14 +52,15 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
         }
     }
 
+    // FIX: Sửa lại kích thước favicon từ null thành 32
     override suspend fun getFavicons(): Favicons = Favicons(
-        listOf(Favicon("https://hentaivn.su/favicon.ico", null, null)),
+        listOf(Favicon("https://hentaivn.su/favicon.ico", 512, null)),
         domain
     )
 
     override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
         super.onCreateConfig(keys)
-        // keys.add(userAgentKey) // Bỏ User-Agent khỏi source settings
+        // Bỏ User-Agent khỏi source settings
     }
 
     override val availableSortOrders: Set<SortOrder> = EnumSet.of(
