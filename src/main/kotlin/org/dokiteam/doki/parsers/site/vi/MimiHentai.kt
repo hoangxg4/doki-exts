@@ -8,6 +8,7 @@ import kotlinx.serialization.json.Json
 import okhttp3.Interceptor
 import okhttp3.Response
 import org.dokiteam.doki.parsers.MangaLoaderContext
+import org.dokiteam.doki.parsers.MangaParserSource
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.bitmap.Bitmap
 import org.dokiteam.doki.parsers.bitmap.Rect
@@ -22,7 +23,6 @@ import org.json.JSONObject
 
 @MangaSourceParser("MIMIHENTAI", "MimiHentai", "vi", type = ContentType.HENTAI)
 internal class MimiHentai(context: MangaLoaderContext) :
-	// FIXED: Use the correct MangaSource enum
 	PagedMangaParser(context, MangaParserSource.MIMIHENTAI, 18) {
 
 	private val apiSuffix = "api/v2/manga"
@@ -171,11 +171,11 @@ internal class MimiHentai(context: MangaLoaderContext) :
 		)
 	}
 
+	/**
+	 * Reverted to the direct API method as requested.
+	 */
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-		val url = context.decodeBase64(KuroNeko.PATH)
-			.decodeXorCipher()
-			.toString(Charsets.UTF_8) + "/" + chapter.url
-			
+		val url = "https://$domain/$apiSuffix/chapter?id=${chapter.url}"
 		val response = webClient.httpGet(url).body!!.string()
 		val pageData = json.decodeFromString<ApiChapterPagesResponse>(response)
 
@@ -271,12 +271,6 @@ internal class MimiHentai(context: MangaLoaderContext) :
 		}
 		return result
 	}
-	
-	private fun ByteArray.decodeXorCipher(): ByteArray {
-		return this.mapIndexed { i, b ->
-			(b.toInt() xor XOR_KEY[i % XOR_KEY.size].toInt()).toByte()
-		}.toByteArray()
-	}
 
 	private suspend fun fetchTags(): Set<MangaTag> {
 		val url = "https://$domain/$apiSuffix/genres"
@@ -315,7 +309,6 @@ internal class MimiHentai(context: MangaLoaderContext) :
 		
 		val altTitles = (item.differentNames.orEmpty() + item.parody.orEmpty()).toMutableSet()
 
-		// FIXED: Updated constructor call to match SDK
 		return Manga(
 			id = generateUid(item.id),
 			title = item.title.takeIf { it.isNotEmpty() } ?: "Web chưa đặt tên",
@@ -335,7 +328,6 @@ internal class MimiHentai(context: MangaLoaderContext) :
 	
 	companion object {
 		private const val GT = "gt="
-		private val XOR_KEY = "kotatsuanddokiarethebest".toByteArray(Charsets.UTF_8)
 	}
 
 	//region API Data Classes
