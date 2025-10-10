@@ -1,24 +1,23 @@
 package org.dokiteam.doki.parsers.site.vi
 
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 import okhttp3.Interceptor
 import okhttp3.Response
+import org.json.JSONArray
+import org.json.JSONObject
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.bitmap.Bitmap
 import org.dokiteam.doki.parsers.bitmap.Rect
 import org.dokiteam.doki.parsers.config.ConfigKey
 import org.dokiteam.doki.parsers.core.PagedMangaParser
-import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.network.UserAgents
+import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
+import org.dokiteam.doki.parsers.util.json.*
 import java.text.SimpleDateFormat
 import java.util.*
-import org.json.JSONObject
+import kotlin.math.PI
 
 @MangaSourceParser("MIMIHENTAI", "MimiHentai", "vi", type = ContentType.HENTAI)
 internal class MimiHentai(context: MangaLoaderContext) :
@@ -28,17 +27,16 @@ internal class MimiHentai(context: MangaLoaderContext) :
 	override val configKeyDomain = ConfigKey.Domain("mimihentai.com", "hentaihvn.com")
 	override val userAgentKey = ConfigKey.UserAgent(UserAgents.KOTATSU)
 
-	private val json = Json {
-		ignoreUnknownKeys = true
-		isLenient = true
-	}
-	
-	private val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSSS", Locale.US)
-	private val dateFormatFallback = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US)
-
-
-	init {
-		setFirstPage(0)
+	override suspend fun getFavicons(): Favicons {
+		return Favicons(
+			listOf(
+				Favicon(
+					"https://raw.githubusercontent.com/dragonx943/plugin-sdk/refs/heads/sources/mimihentai/app/src/main/ic_launcher-playstore.png",
+					512,
+					null),
+			),
+			domain,
+		)
 	}
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
@@ -53,7 +51,7 @@ internal class MimiHentai(context: MangaLoaderContext) :
 		SortOrder.POPULARITY_TODAY,
 		SortOrder.POPULARITY_WEEK,
 		SortOrder.POPULARITY_MONTH,
-		SortOrder.RATING
+		SortOrder.RATING,
 	)
 
 	override val filterCapabilities: MangaListFilterCapabilities
@@ -65,120 +63,230 @@ internal class MimiHentai(context: MangaLoaderContext) :
 			isTagsExclusionSupported = true,
 		)
 
+	init {
+		setFirstPage(0)
+	}
+
 	override suspend fun getFilterOptions() = MangaListFilterOptions(availableTags = fetchTags())
 
 	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
-		val url = buildListUrl(page, order, filter)
-		val response = webClient.httpGet(url).body!!.string()
+		val url = buildString {
+			append("https://")
+			append("$domain/$apiSuffix")
 
-		val mangaItems = if (url.contains("/top-manga")) {
-			json.decodeFromString<List<ApiMangaItem>>(response)
-		} else {
-			json.decodeFromString<ApiMangaListResponse>(response).data
-		}
-		
-		return mangaItems.map { toManga(it) }
-	}
-	
-	private fun buildListUrl(page: Int, order: SortOrder, filter: MangaListFilter): String {
-		val baseUrl = "https://$domain/$apiSuffix"
+			if (!filter.query.isNullOrEmpty() ||
+				!filter.author.isNullOrEmpty() ||
+				filter.tags.isNotEmpty()
+			) {
+				append("/advance-search?page=")
+				append(page)
+				append("&max=18") // page size, avoid rate limit
 
-		val isSearching = !filter.query.isNullOrEmpty() || !filter.author.isNullOrEmpty() || filter.tags.isNotEmpty()
-
-		return if (isSearching) {
-			val params = buildMap {
-				put("page", page.toString())
-				put("max", "18")
-				filter.query?.takeIf { it.isNotEmpty() }?.let { put("name", it.urlEncoded()) }
-				filter.author?.takeIf { it.isNotEmpty() }?.let { put("author", it.urlEncoded()) }
-				if (filter.tags.isNotEmpty()) put("genre", filter.tags.joinToString(",") { it.key })
-				if (filter.tagsExclude.isNotEmpty()) put("ex", filter.tagsExclude.joinToString(",") { it.key })
-				put("sort", when (order) {
-					SortOrder.UPDATED -> "updated_at"
-					SortOrder.ALPHABETICAL -> "title"
-					SortOrder.POPULARITY -> "follows"
-					SortOrder.RATING -> "likes"
-					else -> "views"
-				})
-			}
-			"$baseUrl/advance-search?${params.toUrlQuery()}"
-		} else {
-			val path: String
-			val params = mutableMapOf("page" to page.toString())
-			
-			when (order) {
-				SortOrder.POPULARITY_WEEK -> {
-					path = "/top-manga"
-					params["timeType"] = "1"
-					params["limit"] = "18"
+				if (!filter.query.isNullOrEmpty()) {
+					append("&name=")
+					append(filter.query.urlEncoded())
 				}
-				SortOrder.POPULARITY_MONTH -> {
-					path = "/top-manga"
-					params["timeType"] = "2"
-					params["limit"] = "18"
+
+				if (!filter.author.isNullOrEmpty()) {
+					append("&author=")
+					append(filter.author.urlEncoded())
 				}
-				else -> {
-					path = "/tatcatruyen"
-					params["sort"] = when (order) {
+
+				if (filter.tags.isNotEmpty()) {
+					append("&genre=")
+					append(filter.tags.joinToString(",") { it.key })
+				}
+
+				if (filter.tagsExclude.isNotEmpty()) {
+					append("&ex=")
+					append(filter.tagsExclude.joinToString(",") { it.key })
+				}
+
+				append("&sort=")
+				append(
+					when (order) {
 						SortOrder.UPDATED -> "updated_at"
 						SortOrder.ALPHABETICAL -> "title"
 						SortOrder.POPULARITY -> "follows"
+						SortOrder.POPULARITY_TODAY,
+						SortOrder.POPULARITY_WEEK,
+						SortOrder.POPULARITY_MONTH -> "views"
 						SortOrder.RATING -> "likes"
-						else -> "views"
+						else -> ""
 					}
+				)
+			}
+
+			else {
+				append(
+					when (order) {
+						SortOrder.UPDATED -> "/tatcatruyen?page=$page&sort=updated_at"
+						SortOrder.ALPHABETICAL -> "/tatcatruyen?page=$page&sort=title"
+						SortOrder.POPULARITY -> "/tatcatruyen?page=$page&sort=follows"
+						SortOrder.POPULARITY_TODAY -> "/tatcatruyen?page=$page&sort=views"
+						SortOrder.POPULARITY_WEEK -> "/top-manga?page=$page&timeType=1&limit=18"
+						SortOrder.POPULARITY_MONTH -> "/top-manga?page=$page&timeType=2&limit=18"
+						SortOrder.RATING -> "/tatcatruyen?page=$page&sort=likes"
+						else -> "/tatcatruyen?page=$page&sort=updated_at" // default
+					}
+				)
+
+				if (filter.tagsExclude.isNotEmpty()) {
+					append("&ex=")
+					append(filter.tagsExclude.joinToString(",") { it.key })
 				}
 			}
-			if (filter.tagsExclude.isNotEmpty()) {
-				params["ex"] = filter.tagsExclude.joinToString(",") { it.key }
-			}
-			"$baseUrl$path?${params.toUrlQuery()}"
+		}
+
+		val raw = webClient.httpGet(url)
+		return if (url.contains("/top-manga")) {
+			val data = raw.parseJsonArray()
+			parseTopMangaList(data)
+		} else {
+			val data = raw.parseJson().getJSONArray("data")
+			parseMangaList(data)
 		}
 	}
 
-	override suspend fun getDetails(manga: Manga): Manga = coroutineScope {
-		val mangaId = manga.url.substringAfter("/info/")
-		
-		val detailsUrl = "https://$domain/$apiSuffix/info/$mangaId"
-		val detailsJson = webClient.httpGet(detailsUrl).body!!.string()
-		val detailsData = json.decodeFromString<ApiMangaItem>(detailsJson)
+	private fun parseTopMangaList(data: JSONArray): List<Manga> {
+		return data.mapJSON { jo ->
+			val id = jo.getLong("id")
+			val title = jo.getString("title").takeIf { it.isNotEmpty() } ?: "Web chưa đặt tên"
+			val description = jo.getStringOrNull("description")
 
-		val chaptersDeferred = async {
-			val chaptersUrl = "https://$domain/$apiSuffix/gallery/$mangaId"
-			val chaptersJson = webClient.httpGet(chaptersUrl).body!!.string()
-			json.decodeFromString<List<ApiChapter>>(chaptersJson)
+			val differentNames = mutableSetOf<String>().apply {
+				jo.optJSONArray("differentNames")?.let { namesArray ->
+					for (i in 0 until namesArray.length()) {
+						namesArray.optString(i)?.takeIf { it.isNotEmpty() }?.let { name ->
+							add(name)
+						}
+					}
+				}
+			}
+
+			val authors = jo.optJSONArray("authors")?.mapJSON {
+				it.getString("name")
+			}?.toSet() ?: emptySet()
+
+			val tags = jo.optJSONArray("genres")?.mapJSON { genre ->
+				MangaTag(
+					key = genre.getLong("id").toString(),
+					title = genre.getString("name"),
+					source = source
+				)
+			}?.toSet() ?: emptySet()
+
+			Manga(
+				id = generateUid(id),
+				title = title,
+				altTitles = differentNames,
+				url = "/$apiSuffix/info/$id",
+				publicUrl = "https://$domain/g/$id",
+				rating = RATING_UNKNOWN,
+				contentRating = ContentRating.ADULT,
+				coverUrl = jo.getString("coverUrl"),
+				state = null,
+				description = description,
+				tags = tags,
+				authors = authors,
+				source = source,
+			)
+		}
+	}
+
+	private fun parseMangaList(data: JSONArray): List<Manga> {
+		return data.mapJSON { jo ->
+			val id = jo.getLong("id")
+			val title = jo.getString("title").takeIf { it.isNotEmpty() } ?: "Web chưa đặt tên"
+			val description = jo.getStringOrNull("description")
+
+			val differentNames = mutableSetOf<String>().apply {
+				jo.optJSONArray("differentNames")?.let { namesArray ->
+					for (i in 0 until namesArray.length()) {
+						namesArray.optString(i)?.takeIf { it.isNotEmpty() }?.let { name ->
+							add(name)
+						}
+					}
+				}
+			}
+
+			val authors = jo.getJSONArray("authors").mapJSON {
+				it.getString("name")
+			}.toSet()
+
+			val tags = jo.getJSONArray("genres").mapJSON { genre ->
+				MangaTag(
+					key = genre.getLong("id").toString(),
+					title = genre.getString("name"),
+					source = source
+				)
+			}.toSet()
+
+			Manga(
+				id = generateUid(id),
+				title = title,
+				altTitles = differentNames,
+				url = "/$apiSuffix/info/$id",
+				publicUrl = "https://$domain/g/$id",
+				rating = RATING_UNKNOWN,
+				contentRating = ContentRating.ADULT,
+				coverUrl = jo.getString("coverUrl"),
+				state = null,
+				tags = tags,
+				description = description,
+				authors = authors,
+				source = source,
+			)
+		}
+	}
+
+	override suspend fun getDetails(manga: Manga): Manga {
+		val url = manga.url.toAbsoluteUrl(domain)
+		val json = webClient.httpGet(url).parseJson()
+		val id = json.getLong("id")
+		val description = json.getStringOrNull("description")
+		val uploaderName = json.getJSONObject("uploader").getString("displayName")
+
+		val tags = json.getJSONArray("genres").mapJSONToSet { jo ->
+			MangaTag(
+				title = jo.getString("name").toTitleCase(sourceLocale),
+				key = jo.getLong("id").toString(),
+				source = source,
+			)
 		}
 
-		val chaptersData = chaptersDeferred.await()
-		val chapters = chaptersData.map {
+		val urlChaps = "https://$domain/$apiSuffix/gallery/$id"
+		val parsedChapters = webClient.httpGet(urlChaps).parseJsonArray()
+		val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSSS", Locale.US)
+		val chapters = parsedChapters.mapJSON { jo ->
 			MangaChapter(
-				id = generateUid(it.id),
-				title = it.title,
-				number = it.order,
-				url = it.id.toString(),
-				uploadDate = parseDate(it.createdAt) ?: 0L,
+				id = generateUid(jo.getLong("id")),
+				title = jo.getStringOrNull("title"),
+				number = jo.getFloatOrDefault("order", 0f),
+				url = "/$apiSuffix/chapter?id=${jo.getLong("id")}",
+				uploadDate = dateFormat.parse(jo.getString("createdAt"))?.time ?: 0L,
 				source = source,
-				scanlator = detailsData.authors.firstOrNull()?.name,
+				scanlator = uploaderName,
 				branch = null,
 				volume = 0,
 			)
 		}.reversed()
-		
-		return@coroutineScope manga.copy(
-			description = detailsData.description,
-			tags = manga.tags + toManga(detailsData).tags,
-			chapters = chapters
+
+		return manga.copy(
+			tags = tags,
+			description = description,
+			chapters = chapters,
 		)
 	}
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-		val url = "https://$domain/$apiSuffix/chapter?id=${chapter.url}"
-		val response = webClient.httpGet(url).body!!.string()
-		val pageData = json.decodeFromString<ApiChapterPagesResponse>(response)
-
-		return pageData.pages.map {
+		val json = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseJson()
+		return json.getJSONArray("pages").mapJSON { jo ->
+			val imageUrl = jo.getString("imageUrl")
+			val gt = jo.getStringOrNull("drm")
 			MangaPage(
-				id = generateUid(it.imageUrl),
-				url = if (it.drm != null) "${it.imageUrl}#$GT${it.drm}" else it.imageUrl,
+				id = generateUid(imageUrl),
+				url = if (gt != null) "$imageUrl#$GT$gt" else imageUrl,
 				preview = null,
 				source = source,
 			)
@@ -194,197 +302,223 @@ internal class MimiHentai(context: MangaLoaderContext) :
 		}
 
 		return context.redrawImageResponse(response) { bitmap ->
-			val gt = fragment.substringAfter(GT)
+			val ori = fragment.substringAfter(GT)
 			runBlocking {
-				extractMetadata(bitmap, gt)
+				extractMetadata(bitmap, ori)
 			}
 		}
 	}
 
-	private fun extractMetadata(bitmap: Bitmap, gt: String): Bitmap {
-		var sw = 0
-		var sh = 0
-		val posMap = mutableMapOf<String, String>()
-		val dimsMap = mutableMapOf<String, DrmRect>()
+	private fun extractMetadata(bitmap: Bitmap, ori: String): Bitmap {
+        val gt = decodeGt(ori)
+		val metadata = JSONObject().apply {
+			var sw = 0
+			var sh = 0
+			val pos = JSONObject()
+			val dims = JSONObject()
 
-		for (t in gt.split("|")) {
-			when {
-				t.startsWith("sw:") -> sw = t.substring(3).toInt()
-				t.startsWith("sh:") -> sh = t.substring(3).toInt()
-				t.contains("@") && t.contains(">") -> {
-					val (left, right) = t.split(">")
-					val (n, rectStr) = left.split("@")
-					val (x, y, w, h) = rectStr.split(",").map { it.toInt() }
-					dimsMap[n] = DrmRect(x, y, w, h)
-					posMap[n] = right
+			for (t in gt.split("|")) {
+				when {
+					t.startsWith("sw:") -> sw = t.substring(3).toInt()
+					t.startsWith("sh:") -> sh = t.substring(3).toInt()
+					t.contains("@") && t.contains(">") -> {
+						val (left, right) = t.split(">")
+						val (n, rectStr) = left.split("@")
+						val (x, y, w, h) = rectStr.split(",").map { it.toInt() }
+						dims.put(n, JSONObject().apply {
+							put("x", x)
+							put("y", y)
+							put("width", w)
+							put("height", h)
+						})
+						pos.put(n, right)
+					}
 				}
 			}
+			put("sw", sw)
+			put("sh", sh)
+			put("dims", dims)
+			put("pos", pos)
 		}
-		val metadata = DrmMetadata(sw, sh, dimsMap, posMap)
 
-		if (metadata.sw <= 0 || metadata.sh <= 0) return bitmap
+		val sw = metadata.optInt("sw")
+		val sh = metadata.optInt("sh")
+		if (sw <= 0 || sh <= 0) return bitmap
+
 		val fullW = bitmap.width
 		val fullH = bitmap.height
-		val working = context.createBitmap(metadata.sw, metadata.sh).also { k ->
-			k.drawBitmap(bitmap, Rect(0, 0, metadata.sw, metadata.sh), Rect(0, 0, metadata.sw, metadata.sh))
+
+		val working = context.createBitmap(sw, sh).also { k ->
+			k.drawBitmap(bitmap, Rect(0, 0, sw, sh), Rect(0, 0, sw, sh))
 		}
 
 		val keys = arrayOf("00","01","02","10","11","12","20","21","22")
-		val baseW = metadata.sw / 3
-		val baseH = metadata.sh / 3
-		val rw = metadata.sw % 3
-		val rh = metadata.sh % 3
-		val defaultDims = HashMap<String, DrmRect>().apply {
+		val baseW = sw / 3
+		val baseH = sh / 3
+		val rw = sw % 3
+		val rh = sh % 3
+		val defaultDims = HashMap<String, IntArray>().apply {
 			for (k in keys) {
 				val i = k[0].digitToInt()
 				val j = k[1].digitToInt()
 				val w = baseW + if (j == 2) rw else 0
 				val h = baseH + if (i == 2) rh else 0
-				put(k, DrmRect(j * baseW, i * baseH, w, h))
+				put(k, intArrayOf(j * baseW, i * baseH, w, h))
 			}
 		}
 
-		val invPos = metadata.pos.entries.associate { (k, v) -> v to k }
+		val dimsJson = metadata.optJSONObject("dims") ?: JSONObject()
+		val dims = HashMap<String, IntArray>().apply {
+			for (k in keys) {
+				val jo = dimsJson.optJSONObject(k)
+				if (jo != null) {
+					put(k, intArrayOf(
+						jo.getInt("x"),
+						jo.getInt("y"),
+						jo.getInt("width"),
+						jo.getInt("height"),
+					))
+				} else {
+					put(k, defaultDims.getValue(k))
+				}
+			}
+		}
+
+		val pos = metadata.optJSONObject("pos") ?: JSONObject()
+		val inv = HashMap<String, String>().apply {
+			val it = pos.keys()
+			while (it.hasNext()) {
+				val a = it.next()
+				val b = pos.getString(a)
+				put(b, a)
+			}
+		}
+
 		val result = context.createBitmap(fullW, fullH)
 
 		for (k in keys) {
-			val srcKey = invPos[k] ?: continue
-			val sRect = metadata.dims[k] ?: defaultDims.getValue(k)
-			val dRect = metadata.dims[srcKey] ?: defaultDims.getValue(srcKey)
-			
+			val srcKey = inv[k] ?: continue
+			val s = dims.getValue(k)
+			val d = dims.getValue(srcKey)
 			result.drawBitmap(
 				working,
-				Rect(sRect.x, sRect.y, sRect.x + sRect.width, sRect.y + sRect.height),
-				Rect(dRect.x, dRect.y, dRect.x + dRect.width, dRect.y + dRect.height),
+				Rect(s[0], s[1], s[0] + s[2], s[1] + s[3]),
+				Rect(d[0], d[1], d[0] + d[2], d[1] + d[3]),
 			)
 		}
 
-		if (metadata.sh < fullH) {
-			result.drawBitmap(bitmap, Rect(0, metadata.sh, fullW, fullH), Rect(0, metadata.sh, fullW, fullH))
+		if (sh < fullH) {
+			result.drawBitmap(
+				bitmap,
+				Rect(0, sh, fullW, fullH),
+				Rect(0, sh, fullW, fullH),
+			)
 		}
-		if (metadata.sw < fullW) {
-			result.drawBitmap(bitmap, Rect(metadata.sw, 0, fullW, fullH), Rect(metadata.sw, 0, fullW, fullH))
+		if (sw < fullW) {
+			result.drawBitmap(
+				bitmap,
+				Rect(sw, 0, fullW, sh),
+				Rect(sw, 0, fullW, sh),
+			)
 		}
+
 		return result
 	}
 
-	private suspend fun fetchTags(): Set<MangaTag> {
+    private fun decodeGt(hexData: String): String {
+        val strategyStr = hexData.takeLast(2)
+        val strategy = strategyStr.toInt(10)
+        val encryptionKey = getFixedEncryptionKey(strategy)
+        val encryptedHex = hexData.dropLast(2)
+        val encryptedBytes = hexToBytes(encryptedHex)
+        val keyBytes = encryptionKey.toByteArray(Charsets.UTF_8)
+        val decrypted = ByteArray(encryptedBytes.size)
+
+        for (i in encryptedBytes.indices) {
+            decrypted[i] = (encryptedBytes[i].toInt() xor keyBytes[i % keyBytes.size].toInt()).toByte()
+        }
+
+        return decrypted.toString(Charsets.UTF_8)
+    }
+
+    private suspend fun fetchTags(): Set<MangaTag> {
 		val url = "https://$domain/$apiSuffix/genres"
-		val response = webClient.httpGet(url).body!!.string()
-		val tags = json.decodeFromString<List<ApiTag>>(response)
-		return tags.mapToSet {
+		val response = webClient.httpGet(url).parseJsonArray()
+		return response.mapJSONToSet { jo ->
 			MangaTag(
-				title = it.name.toTitleCase(sourceLocale),
-				key = it.id.toString(),
-				source = source
+				title = jo.getString("name").toTitleCase(sourceLocale),
+				key = jo.getLong("id").toString(),
+				source = source,
 			)
 		}
 	}
-	
-	private fun parseDate(dateString: String?): Long? {
-        if (dateString.isNullOrBlank()) return null
-        return try {
-            dateFormat.parse(dateString)?.time
-        } catch (e: Exception) {
-            try {
-                dateFormatFallback.parse(dateString)?.time
-            } catch (e2: Exception) {
-                null
-            }
+
+    private fun getKeyByStrategy(strategy: Int): Double {
+        return when (strategy) {
+            0 -> 1.23872913102938
+            1 -> 1.28767913123448
+            2 -> 1.391378192300391
+            3 -> 2.391378192500391
+            4 -> 3.391378191230391
+            5 -> 4.391373210965091
+            6 -> 2.847291847392847
+            7 -> 5.192847362847291
+            8 -> 3.947382917483921
+            9 -> 1.847392847291847
+            10 -> 6.293847291847382
+            11 -> 4.847291847392847
+            12 -> 2.394827394827394
+            13 -> 7.847291847392847
+            14 -> 3.827394827394827
+            15 -> 1.947382947382947
+            16 -> 8.293847291847382
+            17 -> 5.847291847392847
+            18 -> 2.738472938472938
+            19 -> 9.847291847392847
+            20 -> 4.293847291847382
+            21 -> 6.847291847392847
+            22 -> 3.492847291847392
+            23 -> 1.739482738472938
+            24 -> 7.293847291847382
+            25 -> 5.394827394827394
+            26 -> 2.847391847392847
+            27 -> 8.847291847392847
+            28 -> 4.738472938472938
+            29 -> 6.293847391847382
+            30 -> 3.847291847392847
+            31 -> 1.492847291847392
+            32 -> 9.293847291847382
+            33 -> 5.847291847392847
+            34 -> 2.120381029475602
+            35 -> 7.390481264726194
+            36 -> 4.293012462419412
+            37 -> 6.301412704170294
+            38 -> 3.738472938472938
+            39 -> 1.847291847392847
+            40 -> 8.213901280149210
+            41 -> 5.394827394827394
+            42 -> 2.201381022038956
+            43 -> 9.310129031284698
+            44 -> 10.32131031284698
+            45 -> 1.130712039820147
+            else -> 1.2309829040349309
         }
     }
 
-	private fun Map<String, String>.toUrlQuery(): String {
-		return this.entries.joinToString("&") { (k, v) -> "$k=$v" }
-	}
-	
-	private fun toManga(item: ApiMangaItem): Manga {
-		val additionalTags = (item.parody.orEmpty() + item.characters.orEmpty()).mapToSet {
-			MangaTag(it.toTitleCase(), it, source)
-		}
-		
-		val altTitles = (item.differentNames.orEmpty() + item.parody.orEmpty()).toMutableSet()
+    private fun getFixedEncryptionKey(strategy: Int): String {
+        val baseKey = getKeyByStrategy(strategy)
+        return (PI * baseKey).toString()
+    }
 
-		return Manga(
-			id = generateUid(item.id),
-			title = item.title.takeIf { it.isNotEmpty() } ?: "Web chưa đặt tên",
-			altTitles = altTitles,
-			url = "/$apiSuffix/info/${item.id}",
-			publicUrl = "https://$domain/g/${item.id}",
-			rating = RATING_UNKNOWN,
-			contentRating = ContentRating.ADULT,
-			coverUrl = item.coverUrl,
-			tags = item.genres.mapToSet { MangaTag(it.name.toTitleCase(), it.id.toString(), source) } + additionalTags,
-			state = null,
-			authors = item.authors.mapToSet { it.name },
-			description = item.description,
-			source = source,
-		)
-	}
-	
+    private fun hexToBytes(hex: String): ByteArray {
+        val bytes = ByteArray(hex.length / 2)
+        for (i in hex.indices step 2) {
+            bytes[i / 2] = hex.substring(i, i + 2).toInt(16).toByte()
+        }
+        return bytes
+    }
+
 	companion object {
 		private const val GT = "gt="
 	}
-
-	//region API Data Classes
-	@Serializable
-	private data class ApiMangaListResponse(
-		val data: List<ApiMangaItem>
-	)
-	
-	@Serializable
-	private data class ApiMangaItem(
-		val id: Long,
-		val title: String,
-		val description: String? = null,
-		val coverUrl: String,
-		val differentNames: List<String>? = emptyList(),
-		val authors: List<ApiAuthor> = emptyList(),
-		val genres: List<ApiTag> = emptyList(),
-		val parody: List<String>? = emptyList(),
-		val characters: List<String>? = emptyList(),
-		val chapterCount: Int? = null,
-		val lastUpdated: String? = null
-	)
-
-	@Serializable
-	private data class ApiTag(
-		val id: Long,
-		val name: String,
-		val description: String? = null
-	)
-
-	@Serializable
-	private data class ApiAuthor(
-		val id: Long? = null,
-		val name: String
-	)
-	
-	@Serializable
-	private data class ApiChapter(
-		val id: Long,
-		val title: String? = null,
-		val order: Float = 0f,
-		val createdAt: String
-	)
-	
-	@Serializable
-	private data class ApiChapterPagesResponse(
-		val pages: List<ApiPage>
-	)
-	
-	@Serializable
-	private data class ApiPage(
-		val imageUrl: String,
-		val drm: String? = null
-	)
-	
-	private data class DrmRect(val x: Int, val y: Int, val width: Int, val height: Int)
-	private data class DrmMetadata(
-		val sw: Int,
-		val sh: Int,
-		val dims: Map<String, DrmRect>,
-		val pos: Map<String, String>
-	)
-	//endregion
 }
