@@ -19,6 +19,7 @@ import org.dokiteam.doki.parsers.network.UserAgents
 import org.dokiteam.doki.parsers.util.*
 import java.text.SimpleDateFormat
 import java.util.*
+import org.json.JSONObject
 
 @MangaSourceParser("MIMIHENTAI", "MimiHentai", "vi", type = ContentType.HENTAI)
 internal class MimiHentai(context: MangaLoaderContext) :
@@ -170,9 +171,6 @@ internal class MimiHentai(context: MangaLoaderContext) :
 		)
 	}
 
-	/**
-	 * Updated to use the direct API method.
-	 */
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
 		val url = "https://$domain/$apiSuffix/chapter?id=${chapter.url}"
 		val response = webClient.httpGet(url).body!!.string()
