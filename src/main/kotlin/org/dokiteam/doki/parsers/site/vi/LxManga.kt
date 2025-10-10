@@ -19,6 +19,7 @@ internal class LxManga(context: MangaLoaderContext) : PagedMangaParser(context, 
 	override fun getRequestHeaders(): Headers = Headers.Builder()
 		.add("Referer", "https://$domain/")
 		.add("Origin", "https://$domain")
+		.add("Token", "dd230245281c54b0df7a8418a7906e09405b963e62b03872de51e972d2997d12")
 		.build()
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
