@@ -1,56 +1,50 @@
 package org.dokiteam.doki.parsers.site.vi
 
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 import androidx.collection.ArrayMap
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import org.dokiteam.doki.parsers.MangaLoaderContext
-import org.dokiteam.doki.parsers.MangaParserAuthProvider // <-- IMPORT MỚI
+import org.dokiteam.doki.parsers.MangaParserAuthProvider
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
 import org.dokiteam.doki.parsers.core.AbstractMangaParser
-import org.dokiteam.doki.parsers.exception.AuthRequiredException // <-- IMPORT MỚI
+import org.dokiteam.doki.parsers.exception.AuthRequiredException
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.util.*
 
-// --- DATA CLASSES ---
-@Serializable data class User(val id: Int, val username: String, val displayName: String? = null)
-@Serializable data class ApiResponse<T>(val data: List<T>, val page: Int? = null, val total: Int? = null)
-@Serializable data class MangaListItem(val id: Int, val title: String, val coverUrl: String, val authors: String? = null, val genres: List<GenreItem> = emptyList(), val blocked: Boolean = false)
-@Serializable data class GenreItem(val id: Int, val name: String)
-@Serializable data class AuthorItem(val id: Int, val name: String)
-@Serializable data class Uploader(val id: Int, val name: String)
-@Serializable data class MangaDetails(val id: Int, val title: String, val alternativeTitles: List<String> = emptyList(), val coverUrl: String, val description: String?, val authors: List<AuthorItem> = emptyList(), val genres: List<GenreItem> = emptyList(), val uploader: Uploader? = null)
-@Serializable data class ChapterItem(val id: Int, val title: String, val readOrder: Int, @SerialName("createdAt") val createdAt: String)
-@Serializable data class ChapterDetails(@SerialName("pages") val imageUrls: List<String>)
-
-
-// FIX 1: Implement interface MangaParserAuthProvider
 @MangaSourceParser("HENTAIVN", "HentaiVN", "vi", type = ContentType.HENTAI)
 internal class HentaiVNParser(context: MangaLoaderContext) :
     AbstractMangaParser(context, MangaParserSource.HENTAIVN), MangaParserAuthProvider {
+
+    // --- DATA CLASSES (Đã chuyển vào trong class và để private) ---
+    @Serializable private data class User(val id: Int, val username: String, val displayName: String? = null)
+    @Serializable private data class ApiResponse<T>(val data: List<T>, val page: Int? = null, val total: Int? = null)
+    @Serializable private data class MangaListItem(val id: Int, val title: String, val coverUrl: String, val authors: String? = null, val genres: List<GenreItem> = emptyList(), val blocked: Boolean = false)
+    @Serializable private data class GenreItem(val id: Int, val name: String)
+    @Serializable private data class AuthorItem(val id: Int, val name: String)
+    @Serializable private data class Uploader(val id: Int, val name: String)
+    @Serializable private data class MangaDetails(val id: Int, val title: String, val alternativeTitles: List<String> = emptyList(), val coverUrl: String, val description: String?, val authors: List<AuthorItem> = emptyList(), val genres: List<GenreItem> = emptyList(), val uploader: Uploader? = null)
+    @Serializable private data class ChapterItem(val id: Int, val title: String, val readOrder: Int, @SerialName("createdAt") val createdAt: String)
+    @Serializable private data class ChapterDetails(@SerialName("pages") val imageUrls: List<String>)
 
     override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain("hentaivn.su")
     private val json = Json { ignoreUnknownKeys = true }
 
     // --- CÁC HÀM TỪ MangaParserAuthProvider ---
-
-    // Cung cấp URL để app mở WebView đăng nhập
     override val authUrl: String
         get() = domain
 
-    // Kiểm tra xem cookie đăng nhập 'id' có tồn tại hay không
     override suspend fun isAuthorized(): Boolean =
         context.cookieJar.getCookies(domain).any { it.name == "id" }
 
-    // Lấy username từ API /api/user/me, nếu thất bại sẽ throw exception
     override suspend fun getUsername(): String {
         try {
             val response = webClient.httpGet("/api/user/me".toAbsoluteUrl(domain))
@@ -62,14 +56,11 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
                 throw IllegalStateException("Failed to get user info: ${response.code}")
             }
         } catch (e: Exception) {
-            // Throw exception theo đúng yêu cầu của framework
             throw AuthRequiredException(source, e)
         }
     }
 
-
-    // --- CÁC HÀM PARSER CŨ (Không thay đổi) ---
-
+    // --- CÁC HÀM PARSER CƠ BẢN ---
     override suspend fun getFavicons(): Favicons = Favicons(
         listOf(Favicon("https://raw.githubusercontent.com/dragonx943/listcaidaubuoi/refs/heads/main/hentaivn.png", 512, null)),
         domain
@@ -102,7 +93,7 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
             append("/api/library/")
             when {
                 !filter.query.isNullOrEmpty() -> append("search?q=${filter.query.urlEncoded()}&page=$page")
-                filter.tags.isNotEmpty() -> { // Bỏ điều kiện || filter.excludedTags.isNotEmpty()
+                filter.tags.isNotEmpty() -> {
                     val included = filter.tags.joinToString(",") { "(${it.key},1)" }
                     append("advanced-search?g=${included.urlEncoded()}&page=$page")
                 }
@@ -115,12 +106,14 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
                 }
             }
         }.toAbsoluteUrl(domain)
+
         val responseJson = webClient.httpGet(apiUrl).body!!.string()
         val mangaList: List<MangaListItem> = try {
             json.decodeFromString<ApiResponse<MangaListItem>>(responseJson).data
         } catch (e: Exception) {
             json.decodeFromString<List<MangaListItem>>(responseJson)
         }
+        
         return mangaList.filterNot { it.blocked }.map { item ->
             Manga(
                 id = generateUid(item.id.toString()),
@@ -138,7 +131,7 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
             )
         }
     }
-
+    
     override suspend fun getDetails(manga: Manga): Manga = coroutineScope {
         val mangaId = manga.url.substringAfterLast('/')
         val detailsDeferred = async {
@@ -147,8 +140,10 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
             json.decodeFromString<MangaDetails>(responseJson)
         }
         val chaptersDeferred = async { fetchChaptersFromApi(mangaId) }
+
         val details = detailsDeferred.await()
         val chapters = chaptersDeferred.await()
+        
         manga.copy(
             altTitles = details.alternativeTitles.toSet(),
             authors = details.authors.mapToSet { it.name },
@@ -157,12 +152,13 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
             chapters = chapters.map { it.copy(scanlator = details.uploader?.name) }
         )
     }
-
+    
     private suspend fun fetchChaptersFromApi(mangaId: String): List<MangaChapter> {
         val apiUrl = "/api/manga/$mangaId/chapters".toAbsoluteUrl(domain)
         return try {
             val responseJson = webClient.httpGet(apiUrl).body!!.string()
             val chapterItems = json.decodeFromString<List<ChapterItem>>(responseJson)
+            
             chapterItems.map { chapterItem ->
                 MangaChapter(
                     id = generateUid(chapterItem.id.toString()),
@@ -184,6 +180,7 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
         val apiUrl = "/api/chapter/$chapterId".toAbsoluteUrl(domain)
         val responseJson = webClient.httpGet(apiUrl).body!!.string()
         val chapterData = json.decodeFromString<ChapterDetails>(responseJson)
+        
         return chapterData.imageUrls.map { imageUrl ->
             MangaPage(id = generateUid(imageUrl), url = imageUrl.toAbsoluteUrl(domain), source = source, preview = null)
         }
@@ -195,8 +192,10 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
     private suspend fun getOrCreateTagMap(): Map<String, MangaTag> = mutex.withLock {
         tagCache?.let { return@withLock it }
         val apiUrl = "/api/tag/genre".toAbsoluteUrl(domain)
+        
         val responseJson = webClient.httpGet(apiUrl).body!!.string()
         val genres = json.decodeFromString<List<GenreItem>>(responseJson)
+        
         val tagMap = ArrayMap<String, MangaTag>()
         for (genre in genres) {
             tagMap[genre.name] = MangaTag(title = genre.name, key = genre.id.toString(), source = source)
@@ -208,6 +207,7 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
     private fun parseDate(dateStr: String?): Long? {
         if (dateStr == null) return null
         val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSSS'Z'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
+        
         return try {
             sdf.parse(dateStr)?.time
         } catch (e: ParseException) {
