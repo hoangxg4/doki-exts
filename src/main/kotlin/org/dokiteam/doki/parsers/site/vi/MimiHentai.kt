@@ -17,7 +17,6 @@ import org.dokiteam.doki.parsers.util.*
 import org.dokiteam.doki.parsers.util.json.*
 import java.text.SimpleDateFormat
 import java.util.*
-import kotlin.math.PI
 
 @MangaSourceParser("MIMIHENTAI", "MimiHentai", "vi", type = ContentType.HENTAI)
 internal class MimiHentai(context: MangaLoaderContext) :
@@ -263,7 +262,7 @@ internal class MimiHentai(context: MangaLoaderContext) :
 				id = generateUid(jo.getLong("id")),
 				title = jo.getStringOrNull("title"),
 				number = jo.getFloatOrDefault("order", 0f),
-				url = "/$apiSuffix/chapter?id=${jo.getLong("id")}",
+				url = "${jo.getLong("id")}",
 				uploadDate = dateFormat.parse(jo.getString("createdAt"))?.time ?: 0L,
 				source = source,
 				scanlator = uploaderName,
@@ -280,7 +279,10 @@ internal class MimiHentai(context: MangaLoaderContext) :
 	}
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-		val json = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseJson()
+		val url = context.decodeBase64(KuroNeko.PATH)
+			.decodeXorCipher()
+			.toString(Charsets.UTF_8) + "/" + chapter.url
+		val json = webClient.httpGet(url).parseJson()
 		return json.getJSONArray("pages").mapJSON { jo ->
 			val imageUrl = jo.getString("imageUrl")
 			val gt = jo.getStringOrNull("drm")
@@ -302,159 +304,138 @@ internal class MimiHentai(context: MangaLoaderContext) :
 		}
 
 		return context.redrawImageResponse(response) { bitmap ->
-			val ori = fragment.substringAfter(GT)
+			val gt = fragment.substringAfter(GT)
 			runBlocking {
-				extractMetadata(bitmap, ori)
+				extractMetadata(bitmap, gt)
 			}
 		}
 	}
 
-	private fun extractMetadata(bitmap: Bitmap, ori: String): Bitmap {
-    val gt = decodeGt(ori)
-    val metadata = JSONObject()
-    var sw = 0
-    var sh = 0
-    val posJsonBuilder = JSONObject()
-    val dimsJsonBuilder = JSONObject()
+	private fun extractMetadata(bitmap: Bitmap, gt: String): Bitmap {
+		val metadata = JSONObject().apply {
+			var sw = 0
+			var sh = 0
+			val pos = JSONObject()
+			val dims = JSONObject()
 
-    for (t in gt.split("|")) {
-        when {
-            t.startsWith("sw:") -> sw = t.substring(3).toIntOrNull() ?: 0
-            t.startsWith("sh:") -> sh = t.substring(3).toIntOrNull() ?: 0
-            t.contains("@") && t.contains(">") -> {
-                val mainParts = t.split(">")
-                if (mainParts.size == 2) {
-                    val left = mainParts[0]
-                    val right = mainParts[1]
-                    val leftParts = left.split("@")
-                    if (leftParts.size == 2) {
-                        val n = leftParts[0]
-                        val rectStr = leftParts[1]
-                        val rectValues = rectStr.split(",").mapNotNull { it.toIntOrNull() }
-                        if (rectValues.size == 4) {
-                            val (x, y, w, h) = rectValues
-                            dimsJsonBuilder.put(n, JSONObject().apply {
-                                put("x", x)
-                                put("y", y)
-                                put("width", w)
-                                put("height", h)
-                            })
-                            posJsonBuilder.put(n, right)
-                        }
-                    }
-                }
-            }
-        }
-    }
-    metadata.put("sw", sw)
-    metadata.put("sh", sh)
-    metadata.put("dims", dimsJsonBuilder)
-    metadata.put("pos", posJsonBuilder)
+			for (t in gt.split("|")) {
+				when {
+					t.startsWith("sw:") -> sw = t.substring(3).toInt()
+					t.startsWith("sh:") -> sh = t.substring(3).toInt()
+					t.contains("@") && t.contains(">") -> {
+						val (left, right) = t.split(">")
+						val (n, rectStr) = left.split("@")
+						val (x, y, w, h) = rectStr.split(",").map { it.toInt() }
+						dims.put(n, JSONObject().apply {
+							put("x", x)
+							put("y", y)
+							put("width", w)
+							put("height", h)
+						})
+						pos.put(n, right)
+					}
+				}
+			}
+			put("sw", sw)
+			put("sh", sh)
+			put("dims", dims)
+			put("pos", pos)
+		}
 
-    if (sw <= 0 || sh <= 0) return bitmap
+		val sw = metadata.optInt("sw")
+		val sh = metadata.optInt("sh")
+		if (sw <= 0 || sh <= 0) return bitmap
 
-    val fullW = bitmap.width
-    val fullH = bitmap.height
+		val fullW = bitmap.width
+		val fullH = bitmap.height
 
-    val working = context.createBitmap(sw, sh).also { k ->
-        k.drawBitmap(bitmap, Rect(0, 0, sw, sh), Rect(0, 0, sw, sh))
-    }
+		val working = context.createBitmap(sw, sh).also { k ->
+			k.drawBitmap(bitmap, Rect(0, 0, sw, sh), Rect(0, 0, sw, sh))
+		}
 
-    val keys = arrayOf("00", "01", "02", "10", "11", "12", "20", "21", "22")
-    val baseW = sw / 3
-    val baseH = sh / 3
-    val rw = sw % 3
-    val rh = sh % 3
-    val defaultDims = HashMap<String, IntArray>().apply {
-        for (k in keys) {
-            val i = k[0].digitToInt()
-            val j = k[1].digitToInt()
-            val w = baseW + if (j == 2) rw else 0
-            val h = baseH + if (i == 2) rh else 0
-            put(k, intArrayOf(j * baseW, i * baseH, w, h))
-        }
-    }
+		val keys = arrayOf("00","01","02","10","11","12","20","21","22")
+		val baseW = sw / 3
+		val baseH = sh / 3
+		val rw = sw % 3
+		val rh = sh % 3
+		val defaultDims = HashMap<String, IntArray>().apply {
+			for (k in keys) {
+				val i = k[0].digitToInt()
+				val j = k[1].digitToInt()
+				val w = baseW + if (j == 2) rw else 0
+				val h = baseH + if (i == 2) rh else 0
+				put(k, intArrayOf(j * baseW, i * baseH, w, h))
+			}
+		}
 
-    val dimsJson = metadata.optJSONObject("dims") ?: JSONObject()
-    val dims = HashMap<String, IntArray>().apply {
-        for (k in keys) {
-            val jo = dimsJson.optJSONObject(k)
-            if (jo != null) {
-                put(k, intArrayOf(
-                    jo.getInt("x"),
-                    jo.getInt("y"),
-                    jo.getInt("width"),
-                    jo.getInt("height"),
-                ))
-            } else {
-                put(k, defaultDims.getValue(k))
-            }
-        }
-    }
+		val dimsJson = metadata.optJSONObject("dims") ?: JSONObject()
+		val dims = HashMap<String, IntArray>().apply {
+			for (k in keys) {
+				val jo = dimsJson.optJSONObject(k)
+				if (jo != null) {
+					put(k, intArrayOf(
+						jo.getInt("x"),
+						jo.getInt("y"),
+						jo.getInt("width"),
+						jo.getInt("height"),
+					))
+				} else {
+					put(k, defaultDims.getValue(k))
+				}
+			}
+		}
 
-    val posJson = metadata.optJSONObject("pos") ?: JSONObject()
-    val inv = HashMap<String, String>().apply {
-        val it = posJson.keys()
-        while (it.hasNext()) {
-            val a = it.next()
-            val b = posJson.getString(a)
-            put(b, a)
-        }
-    }
+		val pos = metadata.optJSONObject("pos") ?: JSONObject()
+		val inv = HashMap<String, String>().apply {
+			val it = pos.keys()
+			while (it.hasNext()) {
+				val a = it.next()
+				val b = pos.getString(a)
+				put(b, a)
+			}
+		}
 
-    val result = context.createBitmap(fullW, fullH)
+		val result = context.createBitmap(fullW, fullH)
 
-    // ========= PHẦN ĐÃ SỬA LỖI LOGIC =========
-    for (k in keys) { // k là vị trí đích
-        val srcKey = inv[k] ?: continue // srcKey là vị trí nguồn
+		for (k in keys) {
+			val srcKey = inv[k] ?: continue
+			val s = dims.getValue(k)
+			val d = dims.getValue(srcKey)
+			result.drawBitmap(
+				working,
+				Rect(s[0], s[1], s[0] + s[2], s[1] + s[3]),
+				Rect(d[0], d[1], d[0] + d[2], d[1] + d[3]),
+			)
+		}
 
-        // Lấy đúng thông tin rect nguồn và đích
-        val s = dims.getValue(srcKey) // Rect nguồn
-        val d = dims.getValue(k)      // Rect đích
+		if (sh < fullH) {
+			result.drawBitmap(
+				bitmap,
+				Rect(0, sh, fullW, fullH),
+				Rect(0, sh, fullW, fullH),
+			)
+		}
+		if (sw < fullW) {
+			result.drawBitmap(
+				bitmap,
+				Rect(sw, 0, fullW, sh),
+				Rect(sw, 0, fullW, sh),
+			)
+		}
 
-        result.drawBitmap(
-            working,
-            Rect(s[0], s[1], s[0] + s[2], s[1] + s[3]),
-            Rect(d[0], d[1], d[0] + d[2], d[1] + d[3])
-        )
-    }
-    // ==========================================
+		return result
+	}
 
-    if (sh < fullH) {
-        result.drawBitmap(
-            bitmap,
-            Rect(0, sh, fullW, fullH),
-            Rect(0, sh, fullW, fullH),
-        )
-    }
-    if (sw < fullW) {
-        result.drawBitmap(
-            bitmap,
-            Rect(sw, 0, fullW, sh),
-            Rect(sw, 0, fullW, sh),
-        )
-    }
+	private fun ByteArray.decodeXorCipher(): ByteArray {
+		val k = "kotatsuanddokiarethebest"
+			.toByteArray(Charsets.UTF_8)
 
-    return result
-}
+		return this.mapIndexed { i, b ->
+			(b.toInt() xor k[i % k.size].toInt()).toByte()
+		}.toByteArray()
+	}
 
-    private fun decodeGt(hexData: String): String {
-        val strategyStr = hexData.takeLast(2)
-        val strategy = strategyStr.toInt(10)
-        val encryptionKey = getFixedEncryptionKey(strategy)
-        val encryptedHex = hexData.dropLast(2)
-        val encryptedBytes = hexToBytes(encryptedHex)
-        val keyBytes = encryptionKey.toByteArray(Charsets.UTF_8)
-        val decrypted = ByteArray(encryptedBytes.size)
-
-        for (i in encryptedBytes.indices) {
-            decrypted[i] = (encryptedBytes[i].toInt() xor keyBytes[i % keyBytes.size].toInt()).toByte()
-        }
-
-        return decrypted.toString(Charsets.UTF_8)
-    }
-
-    private suspend fun fetchTags(): Set<MangaTag> {
+	private suspend fun fetchTags(): Set<MangaTag> {
 		val url = "https://$domain/$apiSuffix/genres"
 		val response = webClient.httpGet(url).parseJsonArray()
 		return response.mapJSONToSet { jo ->
@@ -465,71 +446,6 @@ internal class MimiHentai(context: MangaLoaderContext) :
 			)
 		}
 	}
-
-    private fun getKeyByStrategy(strategy: Int): Double {
-        return when (strategy) {
-            0 -> 1.23872913102938
-            1 -> 1.28767913123448
-            2 -> 1.391378192300391
-            3 -> 2.391378192500391
-            4 -> 3.391378191230391
-            5 -> 4.391373210965091
-            6 -> 2.847291847392847
-            7 -> 5.192847362847291
-            8 -> 3.947382917483921
-            9 -> 1.847392847291847
-            10 -> 6.293847291847382
-            11 -> 4.847291847392847
-            12 -> 2.394827394827394
-            13 -> 7.847291847392847
-            14 -> 3.827394827394827
-            15 -> 1.947382947382947
-            16 -> 8.293847291847382
-            17 -> 5.847291847392847
-            18 -> 2.738472938472938
-            19 -> 9.847291847392847
-            20 -> 4.293847291847382
-            21 -> 6.847291847392847
-            22 -> 3.492847291847392
-            23 -> 1.739482738472938
-            24 -> 7.293847291847382
-            25 -> 5.394827394827394
-            26 -> 2.847391847392847
-            27 -> 8.847291847392847
-            28 -> 4.738472938472938
-            29 -> 6.293847391847382
-            30 -> 3.847291847392847
-            31 -> 1.492847291847392
-            32 -> 9.293847291847382
-            33 -> 5.847291847392847
-            34 -> 2.120381029475602
-            35 -> 7.390481264726194
-            36 -> 4.293012462419412
-            37 -> 6.301412704170294
-            38 -> 3.738472938472938
-            39 -> 1.847291847392847
-            40 -> 8.213901280149210
-            41 -> 5.394827394827394
-            42 -> 2.201381022038956
-            43 -> 9.310129031284698
-            44 -> 10.32131031284698
-            45 -> 1.130712039820147
-            else -> 1.2309829040349309
-        }
-    }
-
-    private fun getFixedEncryptionKey(strategy: Int): String {
-        val baseKey = getKeyByStrategy(strategy)
-        return (PI * baseKey).toString()
-    }
-
-    private fun hexToBytes(hex: String): ByteArray {
-        val bytes = ByteArray(hex.length / 2)
-        for (i in hex.indices step 2) {
-            bytes[i / 2] = hex.substring(i, i + 2).toInt(16).toByte()
-        }
-        return bytes
-    }
 
 	companion object {
 		private const val GT = "gt="
