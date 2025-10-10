@@ -23,7 +23,7 @@ import org.json.JSONObject
 @MangaSourceParser("MIMIHENTAI", "MimiHentai", "vi", type = ContentType.HENTAI)
 internal class MimiHentai(context: MangaLoaderContext) :
 	// FIXED: Use the correct MangaSource enum
-	PagedMangaParser(context, MangaSource.MIMIHENTAI, 18) {
+	PagedMangaParser(context, MangaParserSource.MIMIHENTAI, 18) {
 
 	private val apiSuffix = "api/v2/manga"
 	override val configKeyDomain = ConfigKey.Domain("mimihentai.com", "hentaihvn.com")
