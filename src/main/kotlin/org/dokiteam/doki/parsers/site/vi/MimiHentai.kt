@@ -310,120 +310,134 @@ internal class MimiHentai(context: MangaLoaderContext) :
 	}
 
 	private fun extractMetadata(bitmap: Bitmap, ori: String): Bitmap {
-        val gt = decodeGt(ori)
-		val metadata = JSONObject().apply {
-			var sw = 0
-			var sh = 0
-			val pos = JSONObject()
-			val dims = JSONObject()
+    val gt = decodeGt(ori)
+    val metadata = JSONObject()
+    var sw = 0
+    var sh = 0
+    val pos = JSONObject()
+    val dims = JSONObject()
 
-			for (t in gt.split("|")) {
-				when {
-					t.startsWith("sw:") -> sw = t.substring(3).toInt()
-					t.startsWith("sh:") -> sh = t.substring(3).toInt()
-					t.contains("@") && t.contains(">") -> {
-						val (left, right) = t.split(">")
-						val (n, rectStr) = left.split("@")
-						val (x, y, w, h) = rectStr.split(",").map { it.toInt() }
-						dims.put(n, JSONObject().apply {
-							put("x", x)
-							put("y", y)
-							put("width", w)
-							put("height", h)
-						})
-						pos.put(n, right)
-					}
-				}
-			}
-			put("sw", sw)
-			put("sh", sh)
-			put("dims", dims)
-			put("pos", pos)
-		}
+    for (t in gt.split("|")) {
+        when {
+            t.startsWith("sw:") -> sw = t.substring(3).toIntOrNull() ?: 0
+            t.startsWith("sh:") -> sh = t.substring(3).toIntOrNull() ?: 0
+            t.contains("@") && t.contains(">") -> {
+                // FIX: Kiểm tra kích thước của list trước khi destructuring
+                val mainParts = t.split(">")
+                if (mainParts.size == 2) {
+                    val left = mainParts[0]
+                    val right = mainParts[1]
 
-		val sw = metadata.optInt("sw")
-		val sh = metadata.optInt("sh")
-		if (sw <= 0 || sh <= 0) return bitmap
+                    val leftParts = left.split("@")
+                    if (leftParts.size == 2) {
+                        val n = leftParts[0]
+                        val rectStr = leftParts[1]
+                        
+                        // FIX: Dùng mapNotNull và toIntOrNull để chuyển đổi an toàn và kiểm tra size
+                        val rectValues = rectStr.split(",").mapNotNull { it.toIntOrNull() }
+                        
+                        if (rectValues.size == 4) {
+                            val (x, y, w, h) = rectValues
+                            dims.put(n, JSONObject().apply {
+                                put("x", x)
+                                put("y", y)
+                                put("width", w)
+                                put("height", h)
+                            })
+                            pos.put(n, right)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    metadata.put("sw", sw)
+    metadata.put("sh", sh)
+    metadata.put("dims", dims)
+    metadata.put("pos", pos)
 
-		val fullW = bitmap.width
-		val fullH = bitmap.height
 
-		val working = context.createBitmap(sw, sh).also { k ->
-			k.drawBitmap(bitmap, Rect(0, 0, sw, sh), Rect(0, 0, sw, sh))
-		}
+    if (sw <= 0 || sh <= 0) return bitmap
 
-		val keys = arrayOf("00","01","02","10","11","12","20","21","22")
-		val baseW = sw / 3
-		val baseH = sh / 3
-		val rw = sw % 3
-		val rh = sh % 3
-		val defaultDims = HashMap<String, IntArray>().apply {
-			for (k in keys) {
-				val i = k[0].digitToInt()
-				val j = k[1].digitToInt()
-				val w = baseW + if (j == 2) rw else 0
-				val h = baseH + if (i == 2) rh else 0
-				put(k, intArrayOf(j * baseW, i * baseH, w, h))
-			}
-		}
+    val fullW = bitmap.width
+    val fullH = bitmap.height
 
-		val dimsJson = metadata.optJSONObject("dims") ?: JSONObject()
-		val dims = HashMap<String, IntArray>().apply {
-			for (k in keys) {
-				val jo = dimsJson.optJSONObject(k)
-				if (jo != null) {
-					put(k, intArrayOf(
-						jo.getInt("x"),
-						jo.getInt("y"),
-						jo.getInt("width"),
-						jo.getInt("height"),
-					))
-				} else {
-					put(k, defaultDims.getValue(k))
-				}
-			}
-		}
+    val working = context.createBitmap(sw, sh).also { k ->
+        k.drawBitmap(bitmap, Rect(0, 0, sw, sh), Rect(0, 0, sw, sh))
+    }
 
-		val pos = metadata.optJSONObject("pos") ?: JSONObject()
-		val inv = HashMap<String, String>().apply {
-			val it = pos.keys()
-			while (it.hasNext()) {
-				val a = it.next()
-				val b = pos.getString(a)
-				put(b, a)
-			}
-		}
+    val keys = arrayOf("00","01","02","10","11","12","20","21","22")
+    val baseW = sw / 3
+    val baseH = sh / 3
+    val rw = sw % 3
+    val rh = sh % 3
+    val defaultDims = HashMap<String, IntArray>().apply {
+        for (k in keys) {
+            val i = k[0].digitToInt()
+            val j = k[1].digitToInt()
+            val w = baseW + if (j == 2) rw else 0
+            val h = baseH + if (i == 2) rh else 0
+            put(k, intArrayOf(j * baseW, i * baseH, w, h))
+        }
+    }
 
-		val result = context.createBitmap(fullW, fullH)
+    val dimsJson = metadata.optJSONObject("dims") ?: JSONObject()
+    val dims = HashMap<String, IntArray>().apply {
+        for (k in keys) {
+            val jo = dimsJson.optJSONObject(k)
+            if (jo != null) {
+                put(k, intArrayOf(
+                    jo.getInt("x"),
+                    jo.getInt("y"),
+                    jo.getInt("width"),
+                    jo.getInt("height"),
+                ))
+            } else {
+                put(k, defaultDims.getValue(k))
+            }
+        }
+    }
 
-		for (k in keys) {
-			val srcKey = inv[k] ?: continue
-			val s = dims.getValue(k)
-			val d = dims.getValue(srcKey)
-			result.drawBitmap(
-				working,
-				Rect(s[0], s[1], s[0] + s[2], s[1] + s[3]),
-				Rect(d[0], d[1], d[0] + d[2], d[1] + d[3]),
-			)
-		}
+    val posJson = metadata.optJSONObject("pos") ?: JSONObject()
+    val inv = HashMap<String, String>().apply {
+        val it = posJson.keys()
+        while (it.hasNext()) {
+            val a = it.next()
+            val b = posJson.getString(a)
+            put(b, a)
+        }
+    }
 
-		if (sh < fullH) {
-			result.drawBitmap(
-				bitmap,
-				Rect(0, sh, fullW, fullH),
-				Rect(0, sh, fullW, fullH),
-			)
-		}
-		if (sw < fullW) {
-			result.drawBitmap(
-				bitmap,
-				Rect(sw, 0, fullW, sh),
-				Rect(sw, 0, fullW, sh),
-			)
-		}
+    val result = context.createBitmap(fullW, fullH)
 
-		return result
-	}
+    for (k in keys) {
+        val srcKey = inv[k] ?: continue
+        val s = dims.getValue(k)
+        val d = dims.getValue(srcKey)
+        result.drawBitmap(
+            working,
+            Rect(s[0], s[1], s[0] + s[2], s[1] + s[3]),
+            Rect(d[0], d[1], d[0] + d[2], d[1] + d[3]),
+        )
+    }
+
+    if (sh < fullH) {
+        result.drawBitmap(
+            bitmap,
+            Rect(0, sh, fullW, fullH),
+            Rect(0, sh, fullW, fullH),
+        )
+    }
+    if (sw < fullW) {
+        result.drawBitmap(
+            bitmap,
+            Rect(sw, 0, fullW, sh),
+            Rect(sw, 0, fullW, sh),
+        )
+    }
+
+    return result
+}
 
     private fun decodeGt(hexData: String): String {
         val strategyStr = hexData.takeLast(2)
