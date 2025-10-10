@@ -22,7 +22,8 @@ import org.json.JSONObject
 
 @MangaSourceParser("MIMIHENTAI", "MimiHentai", "vi", type = ContentType.HENTAI)
 internal class MimiHentai(context: MangaLoaderContext) :
-	PagedMangaParser(context, source, 18) {
+	// FIXED: Use the correct MangaSource enum
+	PagedMangaParser(context, MangaSource.MIMIHENTAI, 18) {
 
 	private val apiSuffix = "api/v2/manga"
 	override val configKeyDomain = ConfigKey.Domain("mimihentai.com", "hentaihvn.com")
@@ -171,7 +172,6 @@ internal class MimiHentai(context: MangaLoaderContext) :
 	}
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-		// FIXED: Use KuroNeko.PATH from the same package, no need for local constant
 		val url = context.decodeBase64(KuroNeko.PATH)
 			.decodeXorCipher()
 			.toString(Charsets.UTF_8) + "/" + chapter.url
@@ -315,19 +315,20 @@ internal class MimiHentai(context: MangaLoaderContext) :
 		
 		val altTitles = (item.differentNames.orEmpty() + item.parody.orEmpty()).toMutableSet()
 
+		// FIXED: Updated constructor call to match SDK
 		return Manga(
 			id = generateUid(item.id),
 			title = item.title.takeIf { it.isNotEmpty() } ?: "Web chưa đặt tên",
 			altTitles = altTitles,
 			url = "/$apiSuffix/info/${item.id}",
 			publicUrl = "https://$domain/g/${item.id}",
-			uploadDate = parseDate(item.lastUpdated) ?: RATING_UNKNOWN,
+			rating = RATING_UNKNOWN,
 			contentRating = ContentRating.ADULT,
 			coverUrl = item.coverUrl,
-			state = null,
-			description = item.description,
 			tags = item.genres.mapToSet { MangaTag(it.name.toTitleCase(), it.id.toString(), source) } + additionalTags,
+			state = null,
 			authors = item.authors.mapToSet { it.name },
+			description = item.description,
 			source = source,
 		)
 	}
@@ -335,7 +336,6 @@ internal class MimiHentai(context: MangaLoaderContext) :
 	companion object {
 		private const val GT = "gt="
 		private val XOR_KEY = "kotatsuanddokiarethebest".toByteArray(Charsets.UTF_8)
-		// FIXED: Removed local KURO_NEKO_PATH constant. It will use the one from the KuroNeko.kt file.
 	}
 
 	//region API Data Classes
