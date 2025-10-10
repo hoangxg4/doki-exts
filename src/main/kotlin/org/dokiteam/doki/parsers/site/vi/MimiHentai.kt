@@ -19,7 +19,6 @@ import org.dokiteam.doki.parsers.network.UserAgents
 import org.dokiteam.doki.parsers.util.*
 import java.text.SimpleDateFormat
 import java.util.*
-import org.json.JSONObject
 
 @MangaSourceParser("MIMIHENTAI", "MimiHentai", "vi", type = ContentType.HENTAI)
 internal class MimiHentai(context: MangaLoaderContext) :
@@ -119,7 +118,7 @@ internal class MimiHentai(context: MangaLoaderContext) :
 					params["limit"] = "18"
 				}
 				else -> {
-					path = "/tatcatruyen" 
+					path = "/tatcatruyen"
 					params["sort"] = when (order) {
 						SortOrder.UPDATED -> "updated_at"
 						SortOrder.ALPHABETICAL -> "title"
@@ -172,7 +171,7 @@ internal class MimiHentai(context: MangaLoaderContext) :
 	}
 
 	/**
-	 * Reverted to the direct API method as requested.
+	 * Updated to use the direct API method.
 	 */
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
 		val url = "https://$domain/$apiSuffix/chapter?id=${chapter.url}"
@@ -385,9 +384,9 @@ internal class MimiHentai(context: MangaLoaderContext) :
 	
 	private data class DrmRect(val x: Int, val y: Int, val width: Int, val height: Int)
 	private data class DrmMetadata(
-		val sw: Int, 
-		val sh: Int, 
-		val dims: Map<String, DrmRect>, 
+		val sw: Int,
+		val sh: Int,
+		val dims: Map<String, DrmRect>,
 		val pos: Map<String, String>
 	)
 	//endregion
