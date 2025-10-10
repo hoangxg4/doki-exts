@@ -1,0 +1,52 @@
+[versions]
+# Kotlin & KSP
+kotlin = "2.0.20"
+ksp = "2.0.20-1.0.25"
+
+# Core Libraries
+coroutines = "1.10.2"
+okhttp = "4.12.0"
+okio = "3.11.0"
+jsoup = "1.19.1"
+json = "20240303"
+kotlinx-serialization = "1.7.1"
+androidx-collection = "1.5.0"
+nanohttpd = "2.3.1"
+
+# Testing
+junit = "5.10.1"
+quickjs = "1.1.0"
+
+[libraries]
+# Kotlin & Coroutines
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
+
+# Networking
+okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
+okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
+nanohttpd = { module = "org.nanohttpd:nanohttpd", version.ref = "nanohttpd" }
+
+# Parsing & Utilities
+jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
+json = { module = "org.json:json", version.ref = "json" }
+androidx-collection = { module = "androidx.collection:collection", version.ref = "androidx-collection" }
+
+# KSP Processor (project dependency)
+doki-ksp = { module = "org.dokiteam:doki-ksp" } # Giả định group và name của project :doki-ksp
+
+# Testing
+junit-api = { module = "org.junit.jupiter:junit-jupiter-api", version.ref = "junit" }
+junit-engine = { module = "org.junit.jupiter:junit-jupiter-engine", version.ref = "junit" }
+junit-params = { module = "org.junit.jupiter:junit-jupiter-params", version.ref = "junit" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+quickjs = { module = "io.webfolder:quickjs", version.ref = "quickjs" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+
+[bundles]
+# Nhóm các thư viện test của JUnit lại cho gọn
+junit = ["junit-api", "junit-engine", "junit-params"]
