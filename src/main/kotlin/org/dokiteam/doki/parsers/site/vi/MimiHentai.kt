@@ -8,7 +8,6 @@ import kotlinx.serialization.json.Json
 import okhttp3.Interceptor
 import okhttp3.Response
 import org.dokiteam.doki.parsers.MangaLoaderContext
-import org.dokiteam.doki.parsers.MangaParserSource
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.bitmap.Bitmap
 import org.dokiteam.doki.parsers.bitmap.Rect
