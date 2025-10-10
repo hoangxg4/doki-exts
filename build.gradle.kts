@@ -15,14 +15,15 @@ ksp {
     arg("summaryOutputDir", "${project.projectDir}/.github")
 }
 
+// ✅ ĐÃ CẬP NHẬT: Sử dụng compilerOptions theo chuẩn mới
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
-    kotlinOptions {
-        freeCompilerArgs += listOf(
+    compilerOptions {
+        freeCompilerArgs.addAll(listOf(
             "-opt-in=kotlin.RequiresOptIn",
             "-opt-in=kotlin.contracts.ExperimentalContracts",
             "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
             "-opt-in=org.dokiteam.doki.parsers.InternalParsersApi",
-        )
+        ))
     }
 }
 
@@ -55,10 +56,8 @@ dependencies {
     implementation(libs.androidx.collection)
     implementation(libs.nanohttpd)
 
-    // KSP dependency, lưu ý cách tham chiếu project
     ksp(project(":doki-ksp"))
 
-    // Test dependencies - sử dụng bundle để thêm cả 3 thư viện JUnit
     testImplementation(libs.bundles.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.quickjs)
