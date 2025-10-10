@@ -1,4 +1,4 @@
-name: Parsers test
+name: Build Ext
 
 on:
   push:
