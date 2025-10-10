@@ -314,15 +314,17 @@ internal class MimiHentai(context: MangaLoaderContext) :
     val metadata = JSONObject()
     var sw = 0
     var sh = 0
-    val pos = JSONObject()
-    val dims = JSONObject()
+
+    // FIX: Đổi tên biến để tránh xung đột khai báo.
+    // Các biến này dùng để xây dựng đối tượng JSON.
+    val posJsonBuilder = JSONObject()
+    val dimsJsonBuilder = JSONObject()
 
     for (t in gt.split("|")) {
         when {
             t.startsWith("sw:") -> sw = t.substring(3).toIntOrNull() ?: 0
             t.startsWith("sh:") -> sh = t.substring(3).toIntOrNull() ?: 0
             t.contains("@") && t.contains(">") -> {
-                // FIX: Kiểm tra kích thước của list trước khi destructuring
                 val mainParts = t.split(">")
                 if (mainParts.size == 2) {
                     val left = mainParts[0]
@@ -333,18 +335,19 @@ internal class MimiHentai(context: MangaLoaderContext) :
                         val n = leftParts[0]
                         val rectStr = leftParts[1]
                         
-                        // FIX: Dùng mapNotNull và toIntOrNull để chuyển đổi an toàn và kiểm tra size
                         val rectValues = rectStr.split(",").mapNotNull { it.toIntOrNull() }
                         
                         if (rectValues.size == 4) {
                             val (x, y, w, h) = rectValues
-                            dims.put(n, JSONObject().apply {
+                            // Sử dụng biến đã đổi tên
+                            dimsJsonBuilder.put(n, JSONObject().apply {
                                 put("x", x)
                                 put("y", y)
                                 put("width", w)
                                 put("height", h)
                             })
-                            pos.put(n, right)
+                            // Sử dụng biến đã đổi tên
+                            posJsonBuilder.put(n, right)
                         }
                     }
                 }
@@ -353,8 +356,8 @@ internal class MimiHentai(context: MangaLoaderContext) :
     }
     metadata.put("sw", sw)
     metadata.put("sh", sh)
-    metadata.put("dims", dims)
-    metadata.put("pos", pos)
+    metadata.put("dims", dimsJsonBuilder)
+    metadata.put("pos", posJsonBuilder)
 
 
     if (sw <= 0 || sh <= 0) return bitmap
@@ -382,6 +385,7 @@ internal class MimiHentai(context: MangaLoaderContext) :
     }
 
     val dimsJson = metadata.optJSONObject("dims") ?: JSONObject()
+    // Khai báo `dims` thứ hai (HashMap) bây giờ đã an toàn và không còn xung đột
     val dims = HashMap<String, IntArray>().apply {
         for (k in keys) {
             val jo = dimsJson.optJSONObject(k)
