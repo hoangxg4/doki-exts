@@ -18,12 +18,11 @@ import org.dokiteam.doki.parsers.network.UserAgents
 import org.dokiteam.doki.parsers.util.*
 import java.text.SimpleDateFormat
 import java.util.*
-// Import org.json đã được xóa bỏ
-import org.dokiteam.doki.parsers.util.KuroNeko
+import org.json.JSONObject
 
 @MangaSourceParser("MIMIHENTAI", "MimiHentai", "vi", type = ContentType.HENTAI)
 internal class MimiHentai(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaSourceParser.MIMIHENTAI, 18) {
+	PagedMangaParser(context, source, 18) {
 
 	private val apiSuffix = "api/v2/manga"
 	override val configKeyDomain = ConfigKey.Domain("mimihentai.com", "hentaihvn.com")
@@ -42,19 +41,6 @@ internal class MimiHentai(context: MangaLoaderContext) :
 		setFirstPage(0)
 	}
 
-	override suspend fun getFavicons(): Favicons {
-		return Favicons(
-			listOf(
-				Favicon(
-					"https://raw.githubusercontent.com/dragonx943/plugin-sdk/refs/heads/sources/mimihentai/app/src/main/ic_launcher-playstore.png",
-					512,
-					null
-				),
-			),
-			domain,
-		)
-	}
-
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
 		keys.remove(userAgentKey)
@@ -67,9 +53,7 @@ internal class MimiHentai(context: MangaLoaderContext) :
 		SortOrder.POPULARITY_TODAY,
 		SortOrder.POPULARITY_WEEK,
 		SortOrder.POPULARITY_MONTH,
-		SortOrder.RATING,
-		SortOrder.RANDOM,
-		SortOrder.ACG
+		SortOrder.RATING
 	)
 
 	override val filterCapabilities: MangaListFilterCapabilities
@@ -84,30 +68,20 @@ internal class MimiHentai(context: MangaLoaderContext) :
 	override suspend fun getFilterOptions() = MangaListFilterOptions(availableTags = fetchTags())
 
 	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
-		if ((order == SortOrder.RANDOM || order == SortOrder.ACG) && page > firstPage) {
-			return emptyList()
-		}
-
 		val url = buildListUrl(page, order, filter)
 		val response = webClient.httpGet(url).body!!.string()
 
-		val mangaItems = if (url.contains("/top-manga") || url.contains("/day-random") || url.contains("/acg")) {
+		val mangaItems = if (url.contains("/top-manga")) {
 			json.decodeFromString<List<ApiMangaItem>>(response)
 		} else {
 			json.decodeFromString<ApiMangaListResponse>(response).data
 		}
 		
-		return mangaItems.map { it.toManga(source, apiSuffix) }
+		return mangaItems.map { toManga(it) }
 	}
 	
 	private fun buildListUrl(page: Int, order: SortOrder, filter: MangaListFilter): String {
 		val baseUrl = "https://$domain/$apiSuffix"
-
-		when (order) {
-			SortOrder.RANDOM -> return "$baseUrl/day-random"
-			SortOrder.ACG -> return "$baseUrl/acg?ex"
-			else -> {}
-		}
 
 		val isSearching = !filter.query.isNullOrEmpty() || !filter.author.isNullOrEmpty() || filter.tags.isNotEmpty()
 
@@ -173,12 +147,6 @@ internal class MimiHentai(context: MangaLoaderContext) :
 			val chaptersJson = webClient.httpGet(chaptersUrl).body!!.string()
 			json.decodeFromString<List<ApiChapter>>(chaptersJson)
 		}
-		
-		val relatedDeferred = async {
-			val relatedUrl = "https://$domain/$apiSuffix/random/same-author?id=$mangaId"
-			val relatedJson = webClient.httpGet(relatedUrl).body!!.string()
-			json.decodeFromString<List<ApiMangaItem>>(relatedJson)
-		}
 
 		val chaptersData = chaptersDeferred.await()
 		val chapters = chaptersData.map {
@@ -194,21 +162,16 @@ internal class MimiHentai(context: MangaLoaderContext) :
 				volume = 0,
 			)
 		}.reversed()
-
-		val relatedData = relatedDeferred.await()
-		val related = relatedData
-            .filter { it.id.toString() != mangaId }
-            .map { it.toManga(source, apiSuffix) }
-
+		
 		return@coroutineScope manga.copy(
 			description = detailsData.description,
-			tags = manga.tags + detailsData.toManga(source, apiSuffix).tags,
-			chapters = chapters,
-			related = related
+			tags = manga.tags + toManga(detailsData).tags,
+			chapters = chapters
 		)
 	}
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
+		// FIXED: Use KuroNeko.PATH from the same package, no need for local constant
 		val url = context.decodeBase64(KuroNeko.PATH)
 			.decodeXorCipher()
 			.toString(Charsets.UTF_8) + "/" + chapter.url
@@ -242,11 +205,7 @@ internal class MimiHentai(context: MangaLoaderContext) :
 		}
 	}
 
-	/**
-	 * Refactored to use data classes instead of org.json.JSONObject.
-	 */
 	private fun extractMetadata(bitmap: Bitmap, gt: String): Bitmap {
-		// 1. Parse 'gt' string into a type-safe data class
 		var sw = 0
 		var sh = 0
 		val posMap = mutableMapOf<String, String>()
@@ -267,12 +226,9 @@ internal class MimiHentai(context: MangaLoaderContext) :
 		}
 		val metadata = DrmMetadata(sw, sh, dimsMap, posMap)
 
-		// 2. Use the data from the DrmMetadata object
 		if (metadata.sw <= 0 || metadata.sh <= 0) return bitmap
-
 		val fullW = bitmap.width
 		val fullH = bitmap.height
-
 		val working = context.createBitmap(metadata.sw, metadata.sh).also { k ->
 			k.drawBitmap(bitmap, Rect(0, 0, metadata.sw, metadata.sh), Rect(0, 0, metadata.sw, metadata.sh))
 		}
@@ -292,9 +248,7 @@ internal class MimiHentai(context: MangaLoaderContext) :
 			}
 		}
 
-		// Invert the position map (destination -> source)
 		val invPos = metadata.pos.entries.associate { (k, v) -> v to k }
-		
 		val result = context.createBitmap(fullW, fullH)
 
 		for (k in keys) {
@@ -309,20 +263,11 @@ internal class MimiHentai(context: MangaLoaderContext) :
 			)
 		}
 
-		// Draw remaining parts of the image if it's larger than the scrambled area
 		if (metadata.sh < fullH) {
-			result.drawBitmap(
-				bitmap,
-				Rect(0, metadata.sh, fullW, fullH),
-				Rect(0, metadata.sh, fullW, fullH),
-			)
+			result.drawBitmap(bitmap, Rect(0, metadata.sh, fullW, fullH), Rect(0, metadata.sh, fullW, fullH))
 		}
 		if (metadata.sw < fullW) {
-			result.drawBitmap(
-				bitmap,
-				Rect(metadata.sw, 0, fullW, fullH),
-				Rect(metadata.sw, 0, fullW, fullH),
-			)
+			result.drawBitmap(bitmap, Rect(metadata.sw, 0, fullW, fullH), Rect(metadata.sw, 0, fullW, fullH))
 		}
 		return result
 	}
@@ -363,9 +308,34 @@ internal class MimiHentai(context: MangaLoaderContext) :
 		return this.entries.joinToString("&") { (k, v) -> "$k=$v" }
 	}
 	
+	private fun toManga(item: ApiMangaItem): Manga {
+		val additionalTags = (item.parody.orEmpty() + item.characters.orEmpty()).mapToSet {
+			MangaTag(it.toTitleCase(), it, source)
+		}
+		
+		val altTitles = (item.differentNames.orEmpty() + item.parody.orEmpty()).toMutableSet()
+
+		return Manga(
+			id = generateUid(item.id),
+			title = item.title.takeIf { it.isNotEmpty() } ?: "Web chưa đặt tên",
+			altTitles = altTitles,
+			url = "/$apiSuffix/info/${item.id}",
+			publicUrl = "https://$domain/g/${item.id}",
+			uploadDate = parseDate(item.lastUpdated) ?: RATING_UNKNOWN,
+			contentRating = ContentRating.ADULT,
+			coverUrl = item.coverUrl,
+			state = null,
+			description = item.description,
+			tags = item.genres.mapToSet { MangaTag(it.name.toTitleCase(), it.id.toString(), source) } + additionalTags,
+			authors = item.authors.mapToSet { it.name },
+			source = source,
+		)
+	}
+	
 	companion object {
 		private const val GT = "gt="
 		private val XOR_KEY = "kotatsuanddokiarethebest".toByteArray(Charsets.UTF_8)
+		// FIXED: Removed local KURO_NEKO_PATH constant. It will use the one from the KuroNeko.kt file.
 	}
 
 	//region API Data Classes
@@ -387,31 +357,7 @@ internal class MimiHentai(context: MangaLoaderContext) :
 		val characters: List<String>? = emptyList(),
 		val chapterCount: Int? = null,
 		val lastUpdated: String? = null
-	) {
-		fun toManga(source: MangaSource, apiSuffix: String): Manga {
-			val additionalTags = (parody.orEmpty() + characters.orEmpty()).mapToSet {
-				MangaTag(it.toTitleCase(), it, source, MangaTag.TYPE_GENERIC)
-			}
-			
-			val altTitles = (differentNames.orEmpty() + parody.orEmpty()).toMutableSet()
-
-			return Manga(
-				id = generateUid(this.id),
-				title = this.title.takeIf { it.isNotEmpty() } ?: "Web chưa đặt tên",
-				altTitles = altTitles,
-				url = "/$apiSuffix/info/${this.id}",
-				publicUrl = "https://$domain/g/${this.id}",
-				uploadDate = parseDate(this.lastUpdated) ?: RATING_UNKNOWN,
-				contentRating = ContentRating.ADULT,
-				coverUrl = this.coverUrl,
-				state = null,
-				description = this.description,
-				tags = this.genres.mapToSet { MangaTag(it.name.toTitleCase(), it.id.toString(), source) } + additionalTags,
-				authors = this.authors.mapToSet { it.name },
-				source = source,
-			)
-		}
-	}
+	)
 
 	@Serializable
 	private data class ApiTag(
@@ -445,7 +391,6 @@ internal class MimiHentai(context: MangaLoaderContext) :
 		val drm: String? = null
 	)
 	
-	// Data classes for the refactored extractMetadata function
 	private data class DrmRect(val x: Int, val y: Int, val width: Int, val height: Int)
 	private data class DrmMetadata(
 		val sw: Int, 
