@@ -24,9 +24,12 @@ import java.util.*
 internal class HentaiVNParser(context: MangaLoaderContext) :
     AbstractMangaParser(context, MangaParserSource.HENTAIVN), MangaParserAuthProvider {
 
-	private const val PLACEHOLDER_IMAGE_URL = "https://hentaivn.su/placeholder-error.webp"
+    // SỬA 1: Đặt const val vào companion object
+    companion object {
+        private const val PLACEHOLDER_IMAGE_URL = "https://hentaivn.su/placeholder-error.webp"
+    }
 
-    // --- DATA CLASSES (Đã chuyển vào trong class và để private) ---
+    // --- DATA CLASSES ---
     @Serializable private data class User(val id: Int, val username: String, val displayName: String? = null)
     @Serializable private data class ApiResponse<T>(val data: List<T>, val page: Int? = null, val total: Int? = null)
     @Serializable private data class MangaListItem(val id: Int, val title: String, val coverUrl: String?, val authors: String? = null, val genres: List<GenreItem> = emptyList(), val blocked: Boolean = false)
@@ -40,7 +43,7 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
     override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain("hentaivn.su")
     private val json = Json { ignoreUnknownKeys = true }
 
-    // --- CÁC HÀM TỪ MangaParserAuthProvider ---
+    // --- MangaParserAuthProvider ---
     override val authUrl: String
         get() = domain
 
@@ -117,13 +120,14 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
         }
         
         return mangaList.filterNot { it.blocked }.map { item ->
-			val finalCoverUrl = item.coverUrl?.takeIf { it.isNotBlank() } ?: PLACEHOLDER_IMAGE_URL
+            val finalCoverUrl = item.coverUrl?.takeIf { it.isNotBlank() } ?: PLACEHOLDER_IMAGE_URL
             Manga(
                 id = generateUid(item.id.toString()),
                 title = item.title,
                 url = "/manga/${item.id}",
                 publicUrl = "/manga/${item.id}".toAbsoluteUrl(domain),
-                coverUrl = item.coverUrl.toAbsoluteUrl(domain),
+                // SỬA 2: Sử dụng biến 'finalCoverUrl' đã được xử lý an toàn
+                coverUrl = finalCoverUrl.toAbsoluteUrl(domain),
                 authors = setOfNotNull(item.authors),
                 tags = item.genres.mapToSet { genre -> MangaTag(genre.name, genre.id.toString(), source) },
                 source = source,
@@ -147,8 +151,10 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
         val details = detailsDeferred.await()
         val chapters = chaptersDeferred.await()
 
-		val finalCoverUrl = details.coverUrl?.takeIf { it.isNotBlank() } ?: PLACEHOLDER_IMAGE_URL
+        val finalCoverUrl = details.coverUrl?.takeIf { it.isNotBlank() } ?: PLACEHOLDER_IMAGE_URL
         manga.copy(
+            // NOTE: Bạn quên thêm coverUrl vào đây trong lần sửa trước, tôi đã bổ sung
+            coverUrl = finalCoverUrl.toAbsoluteUrl(domain),
             altTitles = details.alternativeTitles.toSet(),
             authors = details.authors.mapToSet { it.name },
             description = details.description ?: "",
@@ -186,8 +192,14 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
         val chapterData = json.decodeFromString<ChapterDetails>(responseJson)
         
         return chapterData.imageUrls.map { imageUrl ->
-			val finalUrl = imageUrl?.takeIf { it.isNotBlank() } ?: PLACEHOLDER_IMAGE_URL
-            MangaPage(id = generateUid(imageUrl), url = imageUrl.toAbsoluteUrl(domain), source = source, preview = null)
+            val finalUrl = imageUrl?.takeIf { it.isNotBlank() } ?: PLACEHOLDER_IMAGE_URL
+            // SỬA 3: Sử dụng biến 'finalUrl' đã được xử lý an toàn
+            MangaPage(
+                id = generateUid(finalUrl), 
+                url = finalUrl.toAbsoluteUrl(domain), 
+                source = source, 
+                preview = null
+            )
         }
     }
 
