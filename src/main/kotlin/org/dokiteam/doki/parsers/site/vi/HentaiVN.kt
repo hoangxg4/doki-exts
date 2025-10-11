@@ -24,16 +24,18 @@ import java.util.*
 internal class HentaiVNParser(context: MangaLoaderContext) :
     AbstractMangaParser(context, MangaParserSource.HENTAIVN), MangaParserAuthProvider {
 
+	private const val PLACEHOLDER_IMAGE_URL = "https://hentaivn.su/placeholder-error.webp"
+
     // --- DATA CLASSES (Đã chuyển vào trong class và để private) ---
     @Serializable private data class User(val id: Int, val username: String, val displayName: String? = null)
     @Serializable private data class ApiResponse<T>(val data: List<T>, val page: Int? = null, val total: Int? = null)
-    @Serializable private data class MangaListItem(val id: Int, val title: String, val coverUrl: String, val authors: String? = null, val genres: List<GenreItem> = emptyList(), val blocked: Boolean = false)
+    @Serializable private data class MangaListItem(val id: Int, val title: String, val coverUrl: String?, val authors: String? = null, val genres: List<GenreItem> = emptyList(), val blocked: Boolean = false)
     @Serializable private data class GenreItem(val id: Int, val name: String)
     @Serializable private data class AuthorItem(val id: Int, val name: String)
     @Serializable private data class Uploader(val id: Int, val name: String)
-    @Serializable private data class MangaDetails(val id: Int, val title: String, val alternativeTitles: List<String> = emptyList(), val coverUrl: String, val description: String?, val authors: List<AuthorItem> = emptyList(), val genres: List<GenreItem> = emptyList(), val uploader: Uploader? = null)
+    @Serializable private data class MangaDetails(val id: Int, val title: String, val alternativeTitles: List<String> = emptyList(), val coverUrl: String?, val description: String?, val authors: List<AuthorItem> = emptyList(), val genres: List<GenreItem> = emptyList(), val uploader: Uploader? = null)
     @Serializable private data class ChapterItem(val id: Int, val title: String, val readOrder: Int, @SerialName("createdAt") val createdAt: String)
-    @Serializable private data class ChapterDetails(@SerialName("pages") val imageUrls: List<String>)
+    @Serializable private data class ChapterDetails(@SerialName("pages") val imageUrls: List<String?>)
 
     override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain("hentaivn.su")
     private val json = Json { ignoreUnknownKeys = true }
@@ -115,6 +117,7 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
         }
         
         return mangaList.filterNot { it.blocked }.map { item ->
+			val finalCoverUrl = item.coverUrl?.takeIf { it.isNotBlank() } ?: PLACEHOLDER_IMAGE_URL
             Manga(
                 id = generateUid(item.id.toString()),
                 title = item.title,
@@ -143,7 +146,8 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
 
         val details = detailsDeferred.await()
         val chapters = chaptersDeferred.await()
-        
+
+		val finalCoverUrl = details.coverUrl?.takeIf { it.isNotBlank() } ?: PLACEHOLDER_IMAGE_URL
         manga.copy(
             altTitles = details.alternativeTitles.toSet(),
             authors = details.authors.mapToSet { it.name },
@@ -182,6 +186,7 @@ internal class HentaiVNParser(context: MangaLoaderContext) :
         val chapterData = json.decodeFromString<ChapterDetails>(responseJson)
         
         return chapterData.imageUrls.map { imageUrl ->
+			val finalUrl = imageUrl?.takeIf { it.isNotBlank() } ?: PLACEHOLDER_IMAGE_URL
             MangaPage(id = generateUid(imageUrl), url = imageUrl.toAbsoluteUrl(domain), source = source, preview = null)
         }
     }
