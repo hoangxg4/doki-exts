@@ -285,9 +285,9 @@ internal class MimiHentai(context: MangaLoaderContext) :
 			val imageUrl = jo.getString("imageUrl")
 			val gt = jo.getStringOrNull("drm")
 
-			// FIX: Dùng Query Parameter (?) thay vì Fragment (#)
+			// FIX: Dùng path segment giả để "đánh dấu" URL cần giải mã
 			val finalUrl = if (gt != null) {
-				"$imageUrl?$GT_KEY=$gt"
+				"$imageUrl/$DRM_MARKER/$gt"
 			} else {
 				imageUrl
 			}
@@ -303,20 +303,35 @@ internal class MimiHentai(context: MangaLoaderContext) :
 
 	override fun intercept(chain: Interceptor.Chain): Response {
 		val request = chain.request()
-		val response = chain.proceed(request)
-		
-		// FIX: Đọc Query Parameter "gt" từ URL của request
-		val gt = request.url.queryParameter(GT_KEY)
+		val url = request.url
 
-		// Nếu không có param 'gt', trả về response gốc
-		if (gt.isNullOrBlank()) {
-			return response
+		val pathSegments = url.pathSegments
+		val markerIndex = pathSegments.indexOf(DRM_MARKER)
+
+		// Nếu không tìm thấy dấu hiệu, bỏ qua và thực hiện request như bình thường
+		if (markerIndex == -1 || markerIndex + 1 >= pathSegments.size) {
+			return chain.proceed(request)
 		}
+		
+		// Trích xuất mã DRM
+		val gt = pathSegments[markerIndex + 1]
 
-		// Nếu có, tiến hành giải mã
+		// Xây dựng lại URL gốc của ảnh (loại bỏ dấu hiệu và mã DRM)
+		val originalUrl = url.newBuilder().apply {
+			// Xóa 2 segment cuối: /mhdrm/ABC...
+			removePathSegment(pathSegments.size - 1)
+			removePathSegment(pathSegments.size - 2)
+		}.build()
+
+		// Tạo một request mới đến URL gốc
+		val newRequest = request.newBuilder().url(originalUrl).build()
+
+		// Lấy về ảnh đã bị xáo trộn
+		val response = chain.proceed(newRequest)
+
+		// Tiến hành giải mã ảnh
 		return context.redrawImageResponse(response) { bitmap ->
 			runBlocking {
-				// gt ở đây đã là giá trị của drm, không cần cắt chuỗi nữa
 				extractMetadata(bitmap, gt)
 			}
 		}
@@ -448,7 +463,7 @@ internal class MimiHentai(context: MangaLoaderContext) :
 
 	private fun decodeGt(hexData: String): String {
 		val strategyStr = hexData.takeLast(2)
-		val strategy = strategyStr.toInt(10)
+		val strategy = strategyStr.toIntOrNull() ?: 0
 		val encryptionKey = getFixedEncryptionKey(strategy)
 		val encryptedHex = hexData.dropLast(2)
 		val encryptedBytes = hexToBytes(encryptedHex)
@@ -532,14 +547,13 @@ internal class MimiHentai(context: MangaLoaderContext) :
 	}
 
 	private fun hexToBytes(hex: String): ByteArray {
-		val bytes = ByteArray(hex.length / 2)
-		for (i in hex.indices step 2) {
-			bytes[i / 2] = hex.substring(i, i + 2).toInt(16).toByte()
-		}
-		return bytes
+        if (hex.length % 2 != 0) return ByteArray(0)
+		return ByteArray(hex.length / 2) {
+            hex.substring(it * 2, it * 2 + 2).toInt(16).toByte()
+        }
 	}
 
 	companion object {
-		private const val GT_KEY = "gt"
+		private const val DRM_MARKER = "mhdrm"
 	}
 }
