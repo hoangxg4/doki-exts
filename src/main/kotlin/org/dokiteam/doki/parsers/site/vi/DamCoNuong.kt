@@ -18,7 +18,7 @@ import java.util.*
 internal class DamCoNuong(context: MangaLoaderContext) :
 	PagedMangaParser(context, MangaParserSource.DAMCONUONG, 30) {
 
-	override val configKeyDomain = ConfigKey.Domain("damconuong.run")
+	override val configKeyDomain = ConfigKey.Domain("damconuong.skin")
 
 	private val availableTags = suspendLazy(initializer = ::fetchTags)
 
@@ -88,14 +88,14 @@ internal class DamCoNuong(context: MangaLoaderContext) :
 				append(filter.tags.joinTo(this, ",") { it.key })
 			}
 
-			if (filter.tagsExclude.isNotEmpty()) {
-				append("&filter[reject_genres]=")
-				append(filter.tagsExclude.joinTo(this, ",") { it.key })
-			}
-
 			if (!filter.query.isNullOrEmpty()) {
 				append("&filter[name]=")
 				append(filter.query.urlEncoded())
+			}
+
+			if (filter.tagsExclude.isNotEmpty()) {
+				append("&filter[reject_genres]=")
+				append(filter.tagsExclude.joinTo(this, ",") { it.key })
 			}
 
 			append("&page=$page")
@@ -152,9 +152,8 @@ internal class DamCoNuong(context: MangaLoaderContext) :
 			else -> MangaState.FINISHED
 		}
 
-		val chapterListDiv =
-			doc.selectFirst("div#chapterList.justify-between.border-2.border-gray-100.dark\\:border-dark-blue.p-3.bg-white.dark\\:bg-fire-blue.shadow-md.rounded.dark\\:shadow-gray-900.mb-4")
-				?: throw ParseException("Chapters list not found!", url)
+		val chapterListDiv = doc.selectFirst("ul#chapterList")
+			?: throw ParseException("Chapters list not found!", url)
 
 		val chapterLinks = chapterListDiv.select("a.block")
 		val chapters = chapterLinks.mapChapters(reversed = true) { index, a ->
@@ -187,7 +186,7 @@ internal class DamCoNuong(context: MangaLoaderContext) :
     val doc = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseHtml()
 
     doc.selectFirst("script:containsData(window.encryptionConfig)")?.data()?.let { scriptContent ->
-        val fallbackUrlsRegex = Regex(""""fallbackUrls"\s*:\s*(\[.*?\])""")
+        val fallbackUrlsRegex = Regex(""""fallbackUrls"\s*:\s*(\[.*?])""")
         val arrayString = fallbackUrlsRegex.find(scriptContent)?.groupValues?.get(1) ?: return@let
         val urlRegex = Regex("""(https?:\\?/\\?[^"]+\.(?:jpg|jpeg|png|webp|gif))""")
         val scriptImages = urlRegex.findAll(arrayString).map {
