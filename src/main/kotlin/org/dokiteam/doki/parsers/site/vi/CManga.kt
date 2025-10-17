@@ -16,9 +16,11 @@ import org.dokiteam.doki.parsers.util.suspendlazy.suspendLazy
 import java.text.SimpleDateFormat
 import java.util.*
 
+private const val PAGE_SIZE = 20
+
 @MangaSourceParser("CMANGA", "CManga", "vi")
 internal class CMangaParser(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.CMANGA), MangaParserAuthProvider {
+	PagedMangaParser(context, MangaParserSource.CMANGA, PAGE_SIZE), MangaParserAuthProvider {
 
 	override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain("cmangax6.com")
 
