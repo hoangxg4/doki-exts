@@ -13,7 +13,7 @@ import java.util.*
 
 @MangaSourceParser("DUALEOTRUYEN", "Dưa Leo Truyện", "vi", type = ContentType.HENTAI)
 internal class DuaLeoTruyen(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.DUALEOTRUYEN) {
+	PagedMangaParser(context, MangaParserSource.DUALEOTRUYEN, 60) {
 
 	override val configKeyDomain: ConfigKey.Domain
 		get() = ConfigKey.Domain("dualeotruyenev.com")
