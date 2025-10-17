@@ -16,9 +16,9 @@ import java.util.*
 
 @MangaSourceParser("DAMCONUONG", "Dâm Cô Nương", "vi", type = ContentType.HENTAI)
 internal class DamCoNuong(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.DAMCONUONG, 30) {
+	PagedMangaParser(context, MangaParserSource.DAMCONUONG) {
 
-	override val configKeyDomain = ConfigKey.Domain("damconuong.skin")
+	override val configKeyDomain = ConfigKey.Domain("damconuong.co")
 
 	private val availableTags = suspendLazy(initializer = ::fetchTags)
 
