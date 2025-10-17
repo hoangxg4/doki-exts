@@ -23,7 +23,7 @@ import java.util.*
 
 @MangaSourceParser("CUUTRUYEN", "Cứu Truyện", "vi")
 internal class CuuTruyenParser(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.CUUTRUYEN, 24) {
+	PagedMangaParser(context, MangaParserSource.CUUTRUYEN) {
 
     private val apiSuffix = "/api/v2"
 	override val userAgentKey = ConfigKey.UserAgent(UserAgents.KOTATSU)
@@ -32,7 +32,6 @@ internal class CuuTruyenParser(context: MangaLoaderContext) :
 		"cuutruyen.net",
 		"nettrom.com",
 		"hetcuutruyen.net",
-		"cuutruyenpip7z.site",
 		"cuutruyen5c844.site",
 	)
 
