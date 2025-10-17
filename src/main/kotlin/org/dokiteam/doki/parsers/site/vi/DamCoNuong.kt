@@ -16,7 +16,7 @@ import java.util.*
 
 @MangaSourceParser("DAMCONUONG", "Dâm Cô Nương", "vi", type = ContentType.HENTAI)
 internal class DamCoNuong(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.DAMCONUONG) {
+	PagedMangaParser(context, MangaParserSource.DAMCONUONG, 30) {
 
 	override val configKeyDomain = ConfigKey.Domain("damconuong.co")
 
