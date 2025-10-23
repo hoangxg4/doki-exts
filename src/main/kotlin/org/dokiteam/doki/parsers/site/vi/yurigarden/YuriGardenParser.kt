@@ -134,9 +134,13 @@ internal abstract class YuriGardenParser(
 
 		return data.mapJSON { jo ->
 			val id = jo.getLong("id")
-			val altTitles = setOf(jo.optString("anotherName", null))
-				.filterNotNull()
-				.toSet()
+			
+			// Fix 1: Đọc "anotherNames" (số nhiều) dạng mảng
+			val altTitles = jo.optJSONArray("anotherNames")
+				?.asTypedList<String>()
+				?.toSet()
+				.orEmpty()
+			
 			val tags = fetchTags().let { allTags ->
 				jo.optJSONArray("genres")?.asTypedList<String>()?.mapNotNullToSet { g ->
 					allTags.find { x -> x.key == g }
@@ -177,8 +181,15 @@ internal abstract class YuriGardenParser(
 			jo.getString("name") + " (${jo.getLong("id")})"
 		}.orEmpty()
 
-		val altTitles = setOf(json.getString("anotherName"))
-		val description = json.getString("description")
+		// Fix 2: Đọc "anotherNames" (số nhiều) dạng mảng
+		val altTitles = json.optJSONArray("anotherNames")
+			?.asTypedList<String>()
+			?.toSet()
+			.orEmpty()
+		
+		// Fix 3 (Bonus): Dùng optString cho description để tránh crash nếu key thiếu
+		val description = json.optString("description").orEmpty()
+		
 		val team = json.optJSONArray("teams")?.getJSONObject(0)?.getString("name")
 
 		val chaptersDeferred = async {
