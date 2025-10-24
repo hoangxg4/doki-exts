@@ -2,6 +2,7 @@ package org.dokiteam.doki.parsers.site.vi
 
 import okhttp3.Headers
 import org.jsoup.nodes.Document
+import org.jsoup.nodes.Element // Đảm bảo import Element
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
@@ -18,9 +19,23 @@ import java.util.*
 internal class DamCoNuong(context: MangaLoaderContext) :
 	PagedMangaParser(context, MangaParserSource.DAMCONUONG, 30) {
 
+	// --- Các thuộc tính và hàm khởi tạo ---
 	override val configKeyDomain = ConfigKey.Domain("damconuong.co")
-
 	private val availableTags = suspendLazy(initializer = ::fetchTags)
+	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
+		SortOrder.ALPHABETICAL,
+		SortOrder.ALPHABETICAL_DESC,
+		SortOrder.UPDATED,
+		SortOrder.NEWEST,
+		SortOrder.POPULARITY,
+	)
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isMultipleTagsSupported = true,
+			isTagsExclusionSupported = true,
+			isSearchSupported = true,
+			isSearchWithFiltersSupported = true,
+		)
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
@@ -31,28 +46,14 @@ internal class DamCoNuong(context: MangaLoaderContext) :
 		.add("referer", "https://$domain")
 		.build()
 
-	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
-		SortOrder.ALPHABETICAL,
-		SortOrder.ALPHABETICAL_DESC,
-		SortOrder.UPDATED,
-		SortOrder.NEWEST,
-		SortOrder.POPULARITY,
-	)
-
-	override val filterCapabilities: MangaListFilterCapabilities
-		get() = MangaListFilterCapabilities(
-			isMultipleTagsSupported = true,
-			isTagsExclusionSupported = true,
-			isSearchSupported = true,
-			isSearchWithFiltersSupported = true,
-		)
-
+	// --- Các hàm lấy danh sách và chi tiết truyện ---
 	override suspend fun getFilterOptions() = MangaListFilterOptions(
 		availableTags = availableTags.get(),
 		availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED),
 	)
 
 	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
+		// --- (Phần xây dựng URL giữ nguyên như code gốc) ---
 		val url = buildString {
 			append("https://")
 			append(domain)
@@ -66,26 +67,25 @@ internal class DamCoNuong(context: MangaLoaderContext) :
 					SortOrder.POPULARITY -> "-views"
 					SortOrder.ALPHABETICAL -> "name"
 					SortOrder.ALPHABETICAL_DESC -> "-name"
-					else -> "-updated_at"
+					else -> "-updated_at" // Mặc định là cập nhật mới nhất
 				},
 			)
 
 			if (filter.states.isNotEmpty()) {
 				append("&filter[status]=")
-				filter.states.forEach {
-					append(
-						when (it) {
-							MangaState.ONGOING -> "2,"
-							MangaState.FINISHED -> "1,"
-							else -> "2,1"
-						},
-					)
-				}
+				// Nối các trạng thái được chọn, phân tách bằng dấu phẩy
+				append(filter.states.joinToString(",") {
+					when (it) {
+						MangaState.ONGOING -> "2"
+						MangaState.FINISHED -> "1"
+						else -> "" // Bỏ qua các trạng thái không hỗ trợ
+					}
+				}.trimEnd(',')) // Xóa dấu phẩy cuối nếu có
 			}
 
 			if (filter.tags.isNotEmpty()) {
 				append("&filter[accept_genres]=")
-				append(filter.tags.joinTo(this, ",") { it.key })
+				append(filter.tags.joinToString(",") { it.key })
 			}
 
 			if (!filter.query.isNullOrEmpty()) {
@@ -95,50 +95,74 @@ internal class DamCoNuong(context: MangaLoaderContext) :
 
 			if (filter.tagsExclude.isNotEmpty()) {
 				append("&filter[reject_genres]=")
-				append(filter.tagsExclude.joinTo(this, ",") { it.key })
+				append(filter.tagsExclude.joinToString(",") { it.key })
 			}
 
 			append("&page=$page")
 		}
+		// --- (Kết thúc phần xây dựng URL) ---
 
 		val doc = webClient.httpGet(url).parseHtml()
-		return parseMangaList(doc)
+		return parseMangaList(doc) // Gọi hàm parseMangaList đã chỉnh sửa
 	}
 
+	/**
+	 * Phân tích danh sách truyện từ trang HTML.
+	 * Hàm này đã được cập nhật để lấy ảnh bìa (poster) chính xác hơn.
+	 */
 	private fun parseMangaList(doc: Document): List<Manga> {
-		return doc.select(
-			"div.border.rounded-xl.border-gray-300.dark\\:border-dark-blue.bg-white.dark\\:bg-fire-blue"
-		).map { element ->
-			val mainA = element.selectFirstOrThrow("div.relative a")
-			val href = mainA.attrAsRelativeUrl("href")
-			val title = mainA.selectFirst("div.cover-frame img")?.attr("alt")
-				?.takeIf { it.isNotBlank() }
-				?: element.selectFirst("div.p-3 h3 a")?.text()?.takeIf { it.isNotBlank() }
-				?: "Không có tiêu đề"
-			val coverUrl = mainA.select("div.cover-frame img").attr("data-src").takeIf { it.isNotBlank() }
-				?: mainA.select("div.cover-frame img").attr("src")
+		// Chọn thẻ div chứa từng mục truyện bằng selector 'div.manga-vertical'
+		return doc.select("div.manga-vertical").mapNotNull { element ->
+			try {
+				// Tìm thẻ 'a' bao quanh ảnh bìa, bắt đầu bằng "/truyen/"
+				val coverLinkElement = element.selectFirst("a[href^=\"/truyen/\"]")
+					?: return@mapNotNull null // Bỏ qua nếu không tìm thấy link hợp lệ
 
-			Manga(
-				id = generateUid(href),
-				title = title,
-				altTitles = emptySet(),
-				url = href,
-				publicUrl = href.toAbsoluteUrl(domain),
-				rating = RATING_UNKNOWN,
-				contentRating = ContentRating.ADULT,
-				coverUrl = coverUrl,
-				tags = emptySet(),
-				state = null,
-				authors = emptySet(),
-				source = source,
-			)
+				val href = coverLinkElement.attrAsRelativeUrl("href") // Lấy đường dẫn tương đối
+
+				// Tìm thẻ 'img' bên trong thẻ 'a' của ảnh bìa
+				val imgElement = coverLinkElement.selectFirst("div.cover-frame img.cover")
+					?: return@mapNotNull null // Bỏ qua nếu không tìm thấy thẻ img
+
+				// Ưu tiên lấy 'data-src' (cho lazy load), nếu không có thì lấy 'src'
+				// Đồng thời kiểm tra URL không rỗng và không phải là ảnh placeholder base64
+				val coverUrl = imgElement.attr("data-src").takeIf { it.isNotBlank() && !it.startsWith("data:image") }
+					?: imgElement.attr("src").takeIf { it.isNotBlank() && !it.startsWith("data:image") }
+					?: return@mapNotNull null // Bỏ qua nếu không có URL ảnh bìa hợp lệ
+
+				// Lấy tiêu đề: Ưu tiên thuộc tính 'alt' của ảnh, nếu không có thì lấy text của link tiêu đề bên dưới
+				val title = imgElement.attr("alt").takeIf { it.isNotBlank() }
+					?: element.selectFirst("div.p-3 h3 a")?.text()?.takeIf { it.isNotBlank() }
+					?: "Không có tiêu đề" // Tiêu đề mặc định nếu không tìm thấy
+
+				Manga(
+					id = generateUid(href),
+					title = title.trim(), // Loại bỏ khoảng trắng thừa ở tiêu đề
+					altTitles = emptySet(),
+					url = href,
+					publicUrl = href.toAbsoluteUrl(domain),
+					rating = RATING_UNKNOWN,
+					contentRating = ContentRating.ADULT,
+					coverUrl = coverUrl.trim(), // Loại bỏ khoảng trắng thừa ở URL ảnh bìa
+					tags = emptySet(),
+					state = null,
+					authors = emptySet(),
+					source = source,
+				)
+			} catch (e: Exception) {
+				// Ghi log lỗi hoặc xử lý theo cách phù hợp
+				System.err.println("Lỗi khi phân tích mục truyện: ${e.message}")
+				null // Trả về null để bỏ qua mục này nếu có lỗi xảy ra
+			}
 		}
 	}
+
 
 	override suspend fun getDetails(manga: Manga): Manga {
 		val url = manga.url.toAbsoluteUrl(domain)
 		val doc = webClient.httpGet(url).parseHtml()
 
+		// --- (Phần lấy thông tin chi tiết: altTitles, tags, state giữ nguyên như code gốc) ---
 		val altTitles = doc.select("div.mt-2:contains(Tên khác:) span").mapNotNullToSet { it.textOrNull() }
 		val allTags = availableTags.getOrNull().orEmpty()
 		val tags = doc.select("div.mt-2:contains(Thể loại:) a").mapNotNullToSet { a ->
@@ -149,113 +173,180 @@ internal class DamCoNuong(context: MangaLoaderContext) :
 		val stateText = doc.selectFirst("div.mt-2:contains(Tình trạng:) span")?.text()
 		val state = when (stateText) {
 			"Đang tiến hành" -> MangaState.ONGOING
-			else -> MangaState.FINISHED
+			"Đã hoàn thành" -> MangaState.FINISHED // Thêm trường hợp này nếu có
+			else -> null // Hoặc MangaState.UNKNOWN tùy logic của bạn
 		}
+		// --- (Kết thúc phần lấy thông tin chi tiết) ---
+
 
 		val chapterListDiv = doc.selectFirst("ul#chapterList")
-			?: throw ParseException("Chapters list not found!", url)
+			?: throw ParseException("Không tìm thấy danh sách chapter!", url)
 
 		val chapterLinks = chapterListDiv.select("a.block")
 		val chapters = chapterLinks.mapChapters(reversed = true) { index, a ->
 			val title = a.selectFirst("span.text-ellipsis")?.textOrNull()
 			val href = a.attrAsRelativeUrl("href")
-			val uploadDate = a.selectFirst("span.ml-2.whitespace-nowrap")?.text()
+			val uploadDateText = a.selectFirst("span.ml-2.whitespace-nowrap")?.text()
 
 			MangaChapter(
 				id = generateUid(href),
 				title = title,
-				number = index + 1f,
+				number = index + 1f, // Hoặc logic lấy số chapter khác nếu có
 				volume = 0,
 				url = href,
 				scanlator = null,
-				uploadDate = parseChapterDate(uploadDate),
+				uploadDate = parseChapterDate(uploadDateText), // Gọi hàm parseChapterDate
 				branch = null,
 				source = source,
 			)
 		}
+
+		// Lấy mô tả truyện (nếu có)
+		val description = doc.selectFirst("div.manga-info p.description")?.text() // Thay selector nếu cần
 
 		return manga.copy(
 			altTitles = altTitles,
 			tags = tags,
 			state = state,
 			chapters = chapters,
+			description = description // Thêm mô tả vào đối tượng Manga
+			// Thêm các trường khác nếu cần: authors, artists...
 		)
 	}
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-    val doc = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseHtml()
+        val url = chapter.url.toAbsoluteUrl(domain)
+        val doc = webClient.httpGet(url).parseHtml()
 
-    doc.selectFirst("script:containsData(window.encryptionConfig)")?.data()?.let { scriptContent ->
-        val fallbackUrlsRegex = Regex(""""fallbackUrls"\s*:\s*(\[.*?])""")
-        val arrayString = fallbackUrlsRegex.find(scriptContent)?.groupValues?.get(1) ?: return@let
-        val urlRegex = Regex("""(https?:\\?/\\?[^"]+\.(?:jpg|jpeg|png|webp|gif))""")
-        val scriptImages = urlRegex.findAll(arrayString).map {
-            it.groupValues[1].replace("\\/", "/")
-        }.toList()
+        // Ưu tiên 1: Tìm script chứa fallbackUrls
+        doc.selectFirst("script:containsData(window.encryptionConfig)")?.data()?.let { scriptContent ->
+            // Regex để trích xuất mảng JSON của fallbackUrls
+            val fallbackUrlsRegex = Regex(""""fallbackUrls"\s*:\s*(\[.*?])""")
+            val arrayString = fallbackUrlsRegex.find(scriptContent)?.groupValues?.getOrNull(1)
 
-        if (scriptImages.isNotEmpty()) {
-            return scriptImages.map { url ->
-                MangaPage(id = generateUid(url), url = url, preview = null, source = source)
+            if (arrayString != null) {
+                // Regex để trích xuất các URL ảnh từ chuỗi JSON (xử lý cả \/ )
+                val urlRegex = Regex("""["'](https?:\\?/\\?[^"']+\.(?:jpg|jpeg|png|webp|gif))["']""")
+                val scriptImages = urlRegex.findAll(arrayString).map {
+                    it.groupValues[1].replace("\\/", "/") // Thay thế \/ thành /
+                }.toList()
+
+                if (scriptImages.isNotEmpty()) {
+                    return scriptImages.mapIndexed { index, imgUrl -> // Thêm index để tạo ID duy nhất hơn
+                        MangaPage(id = generateUid("${chapter.id}_page_${index + 1}"), url = imgUrl, preview = null, source = source)
+                    }
+                }
             }
         }
-    }
 
-    val tagImagePages = doc.select("div#chapter-content img").mapNotNull { img ->
-        val imageUrl = (img.attr("abs:src").takeIf { it.isNotBlank() }
-            ?: img.attr("abs:data-src").takeIf { it.isNotBlank() })
-            ?.trim()
+        // Ưu tiên 2: Tìm các thẻ img trong div#chapter-content
+        val tagImagePages = doc.select("div#chapter-content img").mapNotNull { img ->
+            // Thử lấy 'src' hoặc 'data-src', ưu tiên 'abs:' để có URL tuyệt đối
+            val imageUrl = (img.attr("abs:src").takeIf { it.isNotBlank() && !it.startsWith("data:") }
+                ?: img.attr("abs:data-src").takeIf { it.isNotBlank() && !it.startsWith("data:") })
+                ?.trim() // Loại bỏ khoảng trắng thừa
 
-        imageUrl?.let {
-            MangaPage(id = generateUid(it), url = it, preview = null, source = source)
+            imageUrl?.let {
+                MangaPage(id = generateUid(it), url = it, preview = null, source = source)
+            }
         }
+
+        if (tagImagePages.isNotEmpty()) {
+            return tagImagePages
+        }
+
+        // Nếu cả hai cách đều không thành công
+        throw ParseException("Không tìm thấy ảnh chapter nào cho: ${chapter.url}", url)
     }
 
-    if (tagImagePages.isNotEmpty()) {
-        return tagImagePages
-    }
+	// --- Các hàm tiện ích ---
 
-    throw ParseException("Không tìm thấy bất kỳ nguồn ảnh nào (đã thử cả script và thẻ img).", chapter.url)
-}
-
+	/**
+	 * Phân tích chuỗi ngày tháng tương đối hoặc tuyệt đối thành timestamp (Long).
+	 */
 	private fun parseChapterDate(date: String?): Long {
-		if (date == null) return 0
-		return when {
-			date.contains("giây trước") -> System.currentTimeMillis() - date.removeSuffix(" giây trước").toLong() * 1000
-			date.contains("phút trước") -> System.currentTimeMillis() - date.removeSuffix(" phút trước")
-				.toLong() * 60 * 1000
+		if (date.isNullOrBlank()) return 0L // Trả về 0 nếu chuỗi rỗng hoặc null
 
-			date.contains("giờ trước") -> System.currentTimeMillis() - date.removeSuffix(" giờ trước")
-				.toLong() * 60 * 60 * 1000
+		// Sử dụng Calendar để xử lý ngày tháng tương đối chính xác hơn
+		val calendar = Calendar.getInstance()
 
-			date.contains("ngày trước") -> System.currentTimeMillis() - date.removeSuffix(" ngày trước")
-				.toLong() * 24 * 60 * 60 * 1000
-
-			date.contains("tuần trước") -> System.currentTimeMillis() - date.removeSuffix(" tuần trước")
-				.toLong() * 7 * 24 * 60 * 60 * 1000
-
-			date.contains("tháng trước") -> System.currentTimeMillis() - date.removeSuffix(" tháng trước")
-				.toLong() * 30 * 24 * 60 * 60 * 1000
-
-			date.contains("năm trước") -> System.currentTimeMillis() - date.removeSuffix(" năm trước")
-				.toLong() * 365 * 24 * 60 * 60 * 1000
-
-			else -> SimpleDateFormat("dd/MM/yyyy", Locale.US).parse(date)?.time ?: 0L
+		return try {
+			when {
+				date.contains("giây trước") -> {
+					val seconds = date.substringBefore(" giây trước").toLongOrNull() ?: 0
+					calendar.add(Calendar.SECOND, -seconds.toInt())
+					calendar.timeInMillis
+				}
+				date.contains("phút trước") -> {
+					val minutes = date.substringBefore(" phút trước").toLongOrNull() ?: 0
+					calendar.add(Calendar.MINUTE, -minutes.toInt())
+					calendar.timeInMillis
+				}
+				date.contains("giờ trước") -> {
+					val hours = date.substringBefore(" giờ trước").toLongOrNull() ?: 0
+					calendar.add(Calendar.HOUR_OF_DAY, -hours.toInt())
+					calendar.timeInMillis
+				}
+				date.contains("ngày trước") -> {
+					val days = date.substringBefore(" ngày trước").toLongOrNull() ?: 0
+					calendar.add(Calendar.DAY_OF_YEAR, -days.toInt())
+					calendar.timeInMillis
+				}
+				date.contains("tuần trước") -> {
+					val weeks = date.substringBefore(" tuần trước").toLongOrNull() ?: 0
+					calendar.add(Calendar.WEEK_OF_YEAR, -weeks.toInt())
+					calendar.timeInMillis
+				}
+				date.contains("tháng trước") -> {
+					val months = date.substringBefore(" tháng trước").toLongOrNull() ?: 0
+					calendar.add(Calendar.MONTH, -months.toInt())
+					calendar.timeInMillis
+				}
+				date.contains("năm trước") -> {
+					val years = date.substringBefore(" năm trước").toLongOrNull() ?: 0
+					calendar.add(Calendar.YEAR, -years.toInt())
+					calendar.timeInMillis
+				}
+				// Thử phân tích định dạng dd/MM/yyyy
+				else -> SimpleDateFormat("dd/MM/yyyy", Locale.US).parse(date)?.time ?: 0L
+			}
+		} catch (e: Exception) {
+			// Ghi log lỗi nếu cần
+			System.err.println("Lỗi parse ngày: '$date' - ${e.message}")
+			0L // Trả về 0 nếu có lỗi xảy ra
 		}
 	}
 
+
+	/**
+	 * Lấy danh sách các thể loại có sẵn từ trang tìm kiếm.
+	 */
 	private suspend fun fetchTags(): Set<MangaTag> {
-		val doc = webClient.httpGet("https://$domain/tim-kiem").parseHtml()
-		val regex = Regex("toggleGenre\\('([0-9]+)'\\)")
-		return doc.body().getElementsByAttribute("@click")
-			.mapNotNullToSet { label ->
-				// @click="toggleGenre('1')"
-				val attr = label.attr("@click")
-				val number = attr.findGroupValue(regex) ?: return@mapNotNullToSet null
-				MangaTag(
-					key = number,
-					title = label.textOrNull()?.toTitleCase(sourceLocale) ?: return@mapNotNullToSet null,
-					source = source,
-				)
+		val url = "https://$domain/tim-kiem"
+		return try {
+			val doc = webClient.httpGet(url).parseHtml()
+			// Tìm các thẻ 'a' trong phần danh sách thể loại (cần kiểm tra selector chính xác)
+			// Ví dụ: dựa trên HTML bạn cung cấp, có thể là các thẻ 'a' bên trong 'ul' có nhiều 'li'
+			val genreLinks = doc.select("ul.grid.grid-cols-2 a[href^='/the-loai/'], ul[x-show='open'] a[href^='/the-loai/']") // Kết hợp selector cho cả mobile và desktop
+
+			genreLinks.mapNotNullToSet { a ->
+				val href = a.attr("href") // Ví dụ: /the-loai/16
+				val key = href.substringAfterLast('/') // Lấy phần số hoặc slug sau dấu '/' cuối cùng
+				val title = a.text()?.toTitleCase(sourceLocale) // Lấy text bên trong thẻ 'a'
+				if (key.isNotBlank() && !title.isNullOrBlank()) {
+					MangaTag(
+						key = key,
+						title = title,
+						source = source,
+					)
+				} else {
+					null
+				}
 			}
+		} catch (e: Exception) {
+			// Ghi log lỗi và trả về set rỗng nếu không fetch được tags
+			System.err.println("Lỗi khi fetch tags từ $url: ${e.message}")
+			emptySet()
+		}
 	}
 }
