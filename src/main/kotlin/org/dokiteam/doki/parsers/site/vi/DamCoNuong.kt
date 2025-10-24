@@ -111,51 +111,71 @@ internal class DamCoNuong(context: MangaLoaderContext) :
 	 * Hàm này đã được cập nhật để lấy ảnh bìa (poster) chính xác hơn.
 	 */
 	private fun parseMangaList(doc: Document): List<Manga> {
-		// Chọn thẻ div chứa từng mục truyện bằng selector 'div.manga-vertical'
-		return doc.select("div.manga-vertical").mapNotNull { element ->
-			try {
-				// Tìm thẻ 'a' bao quanh ảnh bìa, bắt đầu bằng "/truyen/"
-				val coverLinkElement = element.selectFirst("a[href^=\"/truyen/\"]")
-					?: return@mapNotNull null // Bỏ qua nếu không tìm thấy link hợp lệ
+    // Chọn thẻ div chứa từng mục truyện bằng selector 'div.manga-vertical'
+    return doc.select("div.manga-vertical").mapNotNull { element ->
+        try {
+            // Tìm thẻ 'a' bao quanh ảnh bìa, bắt đầu bằng "/truyen/"
+            val coverLinkElement = element.selectFirst("a[href^=\"/truyen/\"]")
+                ?: return@mapNotNull null // Bỏ qua nếu không tìm thấy link hợp lệ
 
-				val href = coverLinkElement.attrAsRelativeUrl("href") // Lấy đường dẫn tương đối
+            val href = coverLinkElement.attrAsRelativeUrl("href") // Lấy đường dẫn tương đối
 
-				// Tìm thẻ 'img' bên trong thẻ 'a' của ảnh bìa
-				val imgElement = coverLinkElement.selectFirst("div.cover-frame img.cover")
-					?: return@mapNotNull null // Bỏ qua nếu không tìm thấy thẻ img
+            // Tìm thẻ 'img' bên trong thẻ 'a' của ảnh bìa
+            val imgElement = coverLinkElement.selectFirst("div.cover-frame img.cover")
+                ?: return@mapNotNull null // Bỏ qua nếu không tìm thấy thẻ img
 
-				// Ưu tiên lấy 'data-src' (cho lazy load), nếu không có thì lấy 'src'
-				// Đồng thời kiểm tra URL không rỗng và không phải là ảnh placeholder base64
-				val coverUrl = imgElement.attr("data-src").takeIf { it.isNotBlank() && !it.startsWith("data:image") }
-					?: imgElement.attr("src").takeIf { it.isNotBlank() && !it.startsWith("data:image") }
-					?: return@mapNotNull null // Bỏ qua nếu không có URL ảnh bìa hợp lệ
+            // Ưu tiên lấy 'data-src' (cho lazy load), nếu không có thì lấy 'src'
+            val rawCoverUrl = imgElement.attr("data-src").takeIf { it.isNotBlank() && !it.startsWith("data:image") }
+                ?: imgElement.attr("src").takeIf { it.isNotBlank() && !it.startsWith("data:image") }
+                ?: return@mapNotNull null // Bỏ qua nếu không có URL ảnh bìa hợp lệ
 
-				// Lấy tiêu đề: Ưu tiên thuộc tính 'alt' của ảnh, nếu không có thì lấy text của link tiêu đề bên dưới
-				val title = imgElement.attr("alt").takeIf { it.isNotBlank() }
-					?: element.selectFirst("div.p-3 h3 a")?.text()?.takeIf { it.isNotBlank() }
-					?: "Không có tiêu đề" // Tiêu đề mặc định nếu không tìm thấy
+            // --- ✨ Bổ sung logic chuẩn hóa URL ảnh bìa ---
+            var finalCoverUrl = rawCoverUrl.trim() // Loại bỏ khoảng trắng thừa
 
-				Manga(
-					id = generateUid(href),
-					title = title.trim(), // Loại bỏ khoảng trắng thừa ở tiêu đề
-					altTitles = emptySet(),
-					url = href,
-					publicUrl = href.toAbsoluteUrl(domain),
-					rating = RATING_UNKNOWN,
-					contentRating = ContentRating.ADULT,
-					coverUrl = coverUrl.trim(), // Loại bỏ khoảng trắng thừa ở URL ảnh bìa
-					tags = emptySet(),
-					state = null,
-					authors = emptySet(),
-					source = source,
-				)
-			} catch (e: Exception) {
-				// Ghi log lỗi hoặc xử lý theo cách phù hợp
-				System.err.println("Lỗi khi phân tích mục truyện: ${e.message}")
-				null // Trả về null để bỏ qua mục này nếu có lỗi xảy ra
-			}
-		}
-	}
+            if (finalCoverUrl.startsWith("//")) {
+                // Xử lý URL bắt đầu bằng // (protocol-relative)
+                finalCoverUrl = "https:$finalCoverUrl"
+            } else if (finalCoverUrl.startsWith("/") && finalCoverUrl.contains("mgcdnxyz.cfd")) {
+                 // Xử lý URL sai định dạng: bắt đầu bằng / nhưng chứa domain CDN
+                 // Chỉ cần thêm https: vào đầu (trình duyệt tự xử lý //)
+                 finalCoverUrl = "https:$finalCoverUrl"
+                 // Hoặc cách khác: finalCoverUrl = "https://" + finalCoverUrl.drop(1) // Bỏ dấu / đầu tiên
+            } else if (finalCoverUrl.startsWith("/")) {
+                 // Xử lý URL tương đối bắt đầu bằng / (không chứa domain CDN)
+                 finalCoverUrl = "https://$domain$finalCoverUrl" // Ghép với domain chính
+            } else if (!finalCoverUrl.startsWith("http:") && !finalCoverUrl.startsWith("https:")) {
+                 // Trường hợp URL không có http/https và không bắt đầu bằng / hoặc //
+                 // Ghi log cảnh báo và coi như không hợp lệ
+                 System.err.println("Định dạng URL ảnh bìa không xác định: $finalCoverUrl cho truyện $href")
+                 return@mapNotNull null // Coi như không hợp lệ
+            }
+            // --- Kết thúc logic chuẩn hóa ---
+
+            // Lấy tiêu đề: Ưu tiên thuộc tính 'alt' của ảnh, nếu không có thì lấy text của link tiêu đề bên dưới
+            val title = imgElement.attr("alt").takeIf { it.isNotBlank() }
+                ?: element.selectFirst("div.p-3 h3 a")?.text()?.takeIf { it.isNotBlank() }
+                ?: "Không có tiêu đề" // Tiêu đề mặc định nếu không tìm thấy
+
+            Manga(
+                id = generateUid(href),
+                title = title.trim(), // Loại bỏ khoảng trắng thừa ở tiêu đề
+                altTitles = emptySet(),
+                url = href,
+                publicUrl = href.toAbsoluteUrl(domain),
+                rating = RATING_UNKNOWN,
+                contentRating = ContentRating.ADULT,
+                coverUrl = finalCoverUrl, // ✨ Sử dụng URL đã được chuẩn hóa
+                tags = emptySet(),
+                state = null,
+                authors = emptySet(),
+                source = source,
+            )
+        } catch (e: Exception) {
+            // Ghi log lỗi hoặc xử lý theo cách phù hợp
+            System.err.println("Lỗi khi phân tích mục truyện: ${e.message} - Element HTML: ${element.outerHtml().take(200)}") // Log thêm HTML để dễ debug
+            null // Trả về null để bỏ qua mục này nếu có lỗi xảy ra
+        }
+    }
 
 
 	override suspend fun getDetails(manga: Manga): Manga {
