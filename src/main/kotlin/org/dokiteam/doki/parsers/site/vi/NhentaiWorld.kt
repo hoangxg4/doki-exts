@@ -1,6 +1,7 @@
 package org.dokiteam.doki.parsers.site.vi
 
 import okhttp3.Headers
+import org.json.JSONArray
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
@@ -8,6 +9,7 @@ import org.dokiteam.doki.parsers.core.PagedMangaParser
 import org.dokiteam.doki.parsers.exception.ParseException
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
+import org.dokiteam.doki.parsers.util.json.getStringOrNull
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -151,24 +153,32 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 		
 		val chapterDateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.ROOT)
 
-		val chapterElements = doc.select("div.grid.grid-cols-1.divide-y a[href^=/read/]")
+		var chapterElements = doc.select("div[id=chapter-list-link] a[href^=/read/]")
+
+		if (chapterElements.isEmpty()) {
+			chapterElements = doc.select("div.grid.grid-cols-1.divide-y a[href^=/read/]")
+		}
+
 		val chapters = chapterElements.mapNotNull { a ->
 			val url = a.attrAsRelativeUrl("href")
-			val titleText = a.selectFirst("span.font-medium")?.text() ?: return@mapNotNull null
+			
+			val titleText = a.selectFirst("span.float-left")?.text()
+				?: a.selectFirst("span.font-medium")?.text()
+				?: return@mapNotNull null
 			
 			val number = titleText.substringAfter("Chapter ").toFloatOrNull()
 				?: titleText.substringAfter("Oneshot").toFloatOrNull()
 				?: -1f
 
-			val uploadDateStr = a.selectFirst("span.text-xs.opacity-70")?.text()
+			val uploadDateStr = a.selectFirst("span.float-right")?.text()
+				?: a.selectFirst("span.text-xs.opacity-70")?.text()
 			val uploadDate = chapterDateFormat.parseSafe(uploadDateStr)
 			
-			val branch = a.selectFirst("div.VI, div.EN")?.text()?.let {
-				when(it) {
-					"VI" -> "Tiếng Việt"
-					"EN" -> "English"
-					else -> null
-				}
+			val langQuery = url.substringAfter("?lang=", "")
+			val branch = when {
+				langQuery.startsWith("VI", ignoreCase = true) -> "Tiếng Việt"
+				langQuery.startsWith("EN", ignoreCase = true) -> "English"
+				else -> null
 			}
 
 			MangaChapter(
@@ -216,27 +226,55 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 	}
 
 	/**
-	 * Đã cập nhật: Parse danh sách tags từ trang chủ.
+	 * Logic fetchTags động:
+	 * Quét các file JS được link từ trang chủ
+	 * để tìm mảng `genres:[{...}]`
 	 */
 	private suspend fun fetchTags(): Set<MangaTag> {
 		val doc = webClient.httpGet("https://$domain").parseHtml()
-		
-		// Selector dựa trên HTML bạn cung cấp (div chứa các tag <a>)
-		val tagElements = doc.select("div.grid.grid-cols-2.bg-slate-800 a[href^=/genre/]")
+		val scriptUrls = doc.select("script[src]").map { it.attrAsAbsoluteUrl("src") }
 
-		return tagElements.mapNotNullToSet { a ->
-			val title = a.text().toTitleCase(sourceLocale)
-			val key = a.attrOrNull("href")?.substringAfterLast('/')
-			
-			if (!key.isNullOrEmpty() && title.isNotEmpty()) {
-				if (title != "Tất cả" || key != "all") { // Lọc tag "Tất cả" nếu có
-					MangaTag(title = title, key = key, source = source)
-				} else {
-					null
+		for (scriptUrl in scriptUrls) {
+			if (!scriptUrl.contains("/_next/static/")) continue
+
+			try {
+				val docJS = webClient.httpGet(scriptUrl).parseRaw()
+
+				// Tìm chuỗi "genres:[{" (đây là key chứa mảng JSON)
+				val optionsStart = docJS.indexOf("genres:[{")
+				if (optionsStart == -1) continue 
+
+				val optionsEnd = docJS.indexOf("}]", optionsStart)
+				if (optionsEnd == -1) continue 
+
+				val optionsStr = docJS.substring(optionsStart + 7, optionsEnd + 2)
+
+				// Parse JSON (Thêm quote cho key không có quote)
+				val optionsArray = JSONArray(
+					optionsStr
+						.replace(Regex(",description:\\s*\"[^\"]*\"(,?)"), "$1") 
+						.replace(Regex("(\\w+):"), "\"$1\":")
+				)
+
+				return buildSet {
+					for (i in 0 until optionsArray.length()) {
+						val option = optionsArray.getJSONObject(i)
+						val title = option.getStringOrNull("label")!!.toTitleCase(sourceLocale)
+						val key = option.getStringOrNull("href")!!.split("/")[2]
+						if (title.isNotEmpty() && key.isNotEmpty()) {
+							if (title != "Tất cả" || key != "all") { 
+								add(MangaTag(title = title, key = key, source = source))
+							}
+						}
+					}
 				}
-			} else {
-				null
+
+			} catch (e: Exception) {
+				continue
 			}
 		}
+		
+		// Nếu thất bại (do Cloudflare), trả về rỗng.
+		return emptySet()
 	}
 }
