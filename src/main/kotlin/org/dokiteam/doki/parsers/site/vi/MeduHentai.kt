@@ -19,6 +19,8 @@ import org.dokiteam.doki.parsers.util.*
 import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.util.*
+// SỬA LỖI 3 & 6: Import .toHeaders()
+import okhttp3.Headers.Companion.toHeaders
 
 @MangaSourceParser("MEDUHENTAI", "MeduHentai", "vi", type = ContentType.HENTAI)
 internal class MeduHentaiParser(context: MangaLoaderContext) :
@@ -36,7 +38,6 @@ internal class MeduHentaiParser(context: MangaLoaderContext) :
         val mangas: List<MangaListItem> = emptyList(),
         val pagination: Pagination? = null,
         @SerialName("manga") val manga: MangaDetails? = null
-        // SỬA MỚI: Xóa 'genres' khỏi đây vì ta hardcode
     )
 
     @Serializable
@@ -105,8 +106,6 @@ internal class MeduHentaiParser(context: MangaLoaderContext) :
         val username: String,
         val email: String? = null
     )
-
-    // SỬA MỚI: Xóa data class GenreItem không còn dùng nữa
 
     override val configKeyDomain: ConfigKey.Domain = ConfigKey.Domain("meduhentai.com")
     private val json = Json { ignoreUnknownKeys = true }
@@ -197,6 +196,8 @@ internal class MeduHentaiParser(context: MangaLoaderContext) :
         
         return apiResponse.mangas.map { item ->
             val finalCoverUrl = item.coverImage?.takeIf { it.isNotBlank() } ?: PLACEHOLDER_IMAGE_URL
+            
+            // SỬA LỖI 1: Xóa 'description' và 'uploadDate'
             Manga(
                 id = generateUid(item.id),
                 title = item.title,
@@ -204,8 +205,7 @@ internal class MeduHentaiParser(context: MangaLoaderContext) :
                 publicUrl = "/manga/${item.id}".toAbsoluteUrl(domain),
                 coverUrl = finalCoverUrl,
                 authors = setOfNotNull(item.author),
-                // Logic này map các key API (VD: "Action", "Big Breasts")
-                // Nó sẽ dùng fallback cho hầu hết các tag, điều này là CHÍNH XÁC
+                // SỬA LỖI 2: Lỗi này tự hết khi sửa Lỗi 1
                 tags = item.genres.mapNotNullToSet { genreKey -> 
                     tagMap[genreKey.lowercase()] ?: MangaTag(genreKey, genreKey, source)
                 },
@@ -213,9 +213,8 @@ internal class MeduHentaiParser(context: MangaLoaderContext) :
                 contentRating = ContentRating.ADULT,
                 altTitles = emptySet(),
                 rating = item.likes?.toFloat() ?: RATING_UNKNOWN,
-                state = null,
-                description = item.description ?: "",
-                uploadDate = parseDate(item.latestChapterUpdate ?: item.updatedAt) ?: 0L
+                state = null
+                // 'description' và 'uploadDate' đã bị xóa
             )
         }
     }
@@ -224,8 +223,11 @@ internal class MeduHentaiParser(context: MangaLoaderContext) :
         val mangaId = manga.url.substringAfterLast('/')
         val detailsApiUrl = "/api/manga/$mangaId".toAbsoluteUrl(domain)
         
-        val headers = mapOf("Referer" to manga.publicUrl)
-        val responseJson = webClient.httpGet(detailsApiUrl, headers = headers).body!!.string()
+        // SỬA LỖI 3: Dùng .toHeaders() và 'extraHeaders'
+        val headers = mapOf("Referer" to manga.publicUrl).toHeaders()
+        val response = webClient.httpGet(detailsApiUrl, extraHeaders = headers)
+        // SỬA LỖI 4 & 5: Đã được sửa
+        val responseJson = response.body!!.string()
         
         val details = json.decodeFromString<ApiResponse>(responseJson).manga
             ?: throw IllegalStateException("Failed to parse manga details for ID: $mangaId")
@@ -270,9 +272,11 @@ internal class MeduHentaiParser(context: MangaLoaderContext) :
         val detailsApiUrl = "/api/manga/$mangaId".toAbsoluteUrl(domain)
         
         val readUrl = "/manga/$mangaId/read/$chapterId".toAbsoluteUrl(domain)
-        val headers = mapOf("Referer" to readUrl)
-
-        val responseJson = webClient.httpGet(detailsApiUrl, headers = headers).body!!.string()
+        // SỬA LỖI 6: Dùng .toHeaders() và 'extraHeaders'
+        val headers = mapOf("Referer" to readUrl).toHeaders()
+        val response = webClient.httpGet(detailsApiUrl, extraHeaders = headers)
+        // SỬA LỖI 7 & 8: Đã được sửa
+        val responseJson = response.body!!.string()
         
         val details = json.decodeFromString<ApiResponse>(responseJson).manga
             ?: throw IllegalStateException("Failed to parse manga details (for pages)")
@@ -300,11 +304,9 @@ internal class MeduHentaiParser(context: MangaLoaderContext) :
     private var tagCache: ArrayMap<String, MangaTag>? = null
     private val mutex = Mutex()
 
-    // SỬA MỚI: Hardcode danh sách genres
     private suspend fun getOrCreateTagMap(): Map<String, MangaTag> = mutex.withLock {
         tagCache?.let { return@withLock it }
 
-        // Danh sách hardcoded trích xuất từ HTML
         val staticGenres = listOf(
             MangaTag(title = "Hành động", key = "action", source = source),
             MangaTag(title = "Phiêu lưu", key = "adventure", source = source),
@@ -323,7 +325,7 @@ internal class MeduHentaiParser(context: MangaLoaderContext) :
         
         val tagMap = ArrayMap<String, MangaTag>()
         for (tag in staticGenres) {
-            tagMap[tag.key] = tag // Key là "action"
+            tagMap[tag.key] = tag
         }
 
         tagCache = tagMap
@@ -344,10 +346,11 @@ internal class MeduHentaiParser(context: MangaLoaderContext) :
         }
     }
     
+    // SỬA LỖI 9: Dùng 'Completed' và 'Ongoing'
     private fun parseMangaState(status: String?): MangaState? {
         return when (status?.lowercase()) {
-            "completed" -> MangaState.COMPLETED
-            "ongoing" -> MangaState.ONGOING
+            "completed" -> MangaState.Completed
+            "ongoing" -> MangaState.Ongoing
             else -> null
         }
     }
