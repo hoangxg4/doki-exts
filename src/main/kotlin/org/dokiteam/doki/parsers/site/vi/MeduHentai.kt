@@ -26,7 +26,7 @@ internal class MeduHentaiParser(context: MangaLoaderContext) :
     AbstractMangaParser(context, MangaParserSource.MEDUHENTAI), MangaParserAuthProvider {
 
     companion object {
-        private const val PLACEHOLDER_IMAGE_URL = "https://meduhentai.com/placeholder-error.webp"
+        // SỬA MỚI: Xóa PLACEHOLDER_IMAGE_URL
         private const val MANGA_PER_PAGE = 24
     }
 
@@ -137,7 +137,7 @@ internal class MeduHentaiParser(context: MangaLoaderContext) :
 
     // --- CÁC HÀM PARSER CƠ BẢN ---
     override suspend fun getFavicons(): Favicons = Favicons(
-        listOf(Favicon("/medusa.ico", 32, null)),
+        listOf(Favicon("https://meduhentai.com/medusa.ico", 32, null)),
         domain
     )
 
@@ -194,14 +194,15 @@ internal class MeduHentaiParser(context: MangaLoaderContext) :
         val tagMap = getOrCreateTagMap()
         
         return apiResponse.mangas.map { item ->
-            val finalCoverUrl = item.coverImage?.takeIf { it.isNotBlank() } ?: PLACEHOLDER_IMAGE_URL
+            // SỬA MỚI: Gán 'null' nếu rỗng
+            val finalCoverUrl = item.coverImage?.takeIf { it.isNotBlank() }
             
             Manga(
                 id = generateUid(item.id),
                 title = item.title,
                 url = "/manga/${item.id}",
                 publicUrl = "/manga/${item.id}".toAbsoluteUrl(domain),
-                coverUrl = finalCoverUrl,
+                coverUrl = finalCoverUrl, // Sẽ là null nếu rỗng
                 authors = setOfNotNull(item.author),
                 tags = item.genres.mapNotNullToSet { genreKey -> 
                     tagMap[genreKey.lowercase()] ?: MangaTag(genreKey, genreKey, source)
@@ -242,12 +243,13 @@ internal class MeduHentaiParser(context: MangaLoaderContext) :
             )
         }.sortedByDescending { it.number }
 
-        val finalCoverUrl = details.coverImage?.takeIf { it.isNotBlank() } ?: PLACEHOLDER_IMAGE_URL
+        // SỬA MỚI: Gán 'null' nếu rỗng
+        val finalCoverUrl = details.coverImage?.takeIf { it.isNotBlank() }
         val authorsSet = setOfNotNull(details.author, details.artist)
         val tagMap = getOrCreateTagMap()
 
         manga.copy(
-            coverUrl = finalCoverUrl,
+            coverUrl = finalCoverUrl, // Sẽ là null nếu rỗng
             altTitles = details.alternativeTitles.toSet(),
             authors = authorsSet,
             description = details.description ?: "",
@@ -277,19 +279,26 @@ internal class MeduHentaiParser(context: MangaLoaderContext) :
             ?: throw IllegalStateException("Chapter $chapterId not found in API response")
 
         if (chapterData.pages.isEmpty()) {
-            throw IllegalStateException("API returned no pages. Check 'Referer' header or API logic.")
+            // SỬA MỚI: Trả về list rỗng thay vì throw lỗi, vì API có thể trả về pages rỗng
+            // (Mặc dù logic anti-bot trước đó cho thấy nó nên có)
+             return emptyList()
         }
         
+        // SỬA MỚI: Dùng mapNotNull để lọc ra các trang có URL rỗng
         return chapterData.pages
             .sortedBy { it.pageNumber }
-            .map { pageItem ->
-                val finalUrl = pageItem.imageUrl.takeIf { it.isNotBlank() } ?: PLACEHOLDER_IMAGE_URL
-                MangaPage(
-                    id = generateUid(finalUrl), 
-                    url = finalUrl,
-                    source = source, 
-                    preview = null
-                )
+            .mapNotNull { pageItem ->
+                val finalUrl = pageItem.imageUrl.takeIf { it.isNotBlank() }
+                if (finalUrl == null) {
+                    null // Bỏ qua trang này
+                } else {
+                    MangaPage(
+                        id = generateUid(finalUrl), 
+                        url = finalUrl,
+                        source = source, 
+                        preview = null
+                    )
+                }
             }
     }
 
@@ -338,7 +347,6 @@ internal class MeduHentaiParser(context: MangaLoaderContext) :
         }
     }
     
-    // SỬA LỖI: Dùng 'FINISHED' và 'ONGOING' (viết hoa)
     private fun parseMangaState(status: String?): MangaState? {
         return when (status?.lowercase()) {
             "completed" -> MangaState.FINISHED
