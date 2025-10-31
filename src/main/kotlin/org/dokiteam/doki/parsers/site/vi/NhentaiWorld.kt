@@ -7,7 +7,7 @@ import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
 import org.dokiteam.doki.parsers.core.PagedMangaParser
-// (FIX 1: Đã xoá import 'HttpException' không tồn tại)
+// (Đã xoá import 'HttpException' không tồn tại)
 import org.dokiteam.doki.parsers.exception.ParseException
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
@@ -131,9 +131,7 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 				while (matcher.find()) {
 					val href = "https://$domain${matcher.group(1)}"
 					
-					// *** FIX 2: Unresolved reference 'unescapeJson' ***
 					val titleEscaped = matcher.group(2) ?: ""
-					// Dùng JSONArray để parse chuỗi có \uXXXX
 					val title = try { JSONArray("[\"$titleEscaped\"]").getString(0) } catch (e: Exception) { titleEscaped }
 					
 					val coverUrl = matcher.group(3).replace("\\\"", "\"")
@@ -163,7 +161,7 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 		return emptyList()
 	}
 
-	// *** HÀM GETDETAILS (V20) - Logic RegEx (Đã chính xác) ***
+	// *** HÀM GETDETAILS (V23 - DEBUG THROW) ***
 	override suspend fun getDetails(manga: Manga): Manga {
 		val doc = webClient.httpGet(manga.url).parseHtml() 
 		
@@ -186,11 +184,9 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 		val description = doc.selectFirst("div#introduction-wrap p.font-light")?.html()?.nullIfEmpty()
 		val altTitles = emptySet<String>() 
 		
-		val chapters = mutableListOf<MangaChapter>()
 		val scripts = doc.select("script")
-		val chapterDateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT)
-		val mangaId = manga.url.substringAfterLast('/')
 		
+		// RegEx (V20) - Tìm "data" (VI) và "chapterListEn" (EN)
 		val regex = Pattern.compile("\\\"data\\\":(\\[.*?\\]),\\\"chapterListEn\\\":(\\[.*?\\])")
 		
 		for (script in scripts) {
@@ -198,74 +194,27 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 			val scriptData = script.data() 
 			
 			if (scriptData.contains("chapterListEn")) { 
+				// Đã tìm thấy script
 				val matcher = regex.matcher(scriptData)
 				
 				if (matcher.find()) {
+					// RegEx KHỚP
 					val viChaptersEscaped = matcher.group(1) ?: "[]"
 					val enChaptersEscaped = matcher.group(2) ?: "[]"
-					
-					val viChaptersStr = viChaptersEscaped.replace("\\\"", "\"")
-					val enChaptersStr = enChaptersEscaped.replace("\\\"", "\"")
 
-					val viArray = try { JSONArray(viChaptersStr) } catch (e: Exception) { JSONArray() }
-					val enArray = try { JSONArray(enChaptersStr) } catch (e: Exception) { JSONArray() }
-					
-					for (i in 0 until viArray.length()) {
-						val chapObj = viArray.getJSONObject(i)
-						val name = chapObj.getStringOrNull("name") ?: continue
-						val uploadDateStr = chapObj.getStringOrNull("createdAt")?.substringBefore("T")
-						val uploadDate = chapterDateFormat.parseSafe(uploadDateStr) ?: 0L
+					// Ném ra dữ liệu bắt được (để debug xem có đúng không)
+					throw ParseException("DEBUG: RegEx ĐÃ MATCH. Data(VI): $viChaptersEscaped || Data(EN): $enChaptersEscaped", manga.url)
 
-						val url = "https://_domain/read/$mangaId/$name?lang=VI".replace("_domain", domain)
-						chapters.add(
-							MangaChapter(
-								id = generateUid(url),
-								title = "Chapter $name",
-								number = name.toFloatOrNull() ?: (i + 1).toFloat(),
-								url = url, 
-								scanlator = null,
-								uploadDate = uploadDate,
-								branch = "Tiếng Việt",
-								source = source,
-								volume = 0
-							)
-						)
-					}
-					
-					for (i in 0 until enArray.length()) {
-						val chapObj = enArray.getJSONObject(i)
-						val name = chapObj.getStringOrNull("name") ?: continue
-						val uploadDateStr = chapObj.getStringOrNull("createdAt")?.substringBefore("T")
-						val uploadDate = chapterDateFormat.parseSafe(uploadDateStr) ?: 0L
-
-						val url = "https://_domain/read/$mangaId/$name?lang=EN".replace("_domain", domain)
-						chapters.add(
-							MangaChapter(
-								id = generateUid(url),
-								title = "Chapter $name",
-								number = name.toFloatOrNull() ?: (i + 1).toFloat(),
-								url = url, 
-								scanlator = null,
-								uploadDate = uploadDate,
-								branch = "English",
-								source = source,
-								volume = 0
-							)
-						)
-					}
-					break 
+				} else {
+					// RegEx THẤT BẠI
+					// Ném ra nội dung script (đã un-escape) mà nó cố match
+					throw ParseException("DEBUG: RegEx FAILED. Dữ liệu script (đã un-escape): $scriptData", manga.url)
 				}
 			}
 		}
 
-		return manga.copy(
-			title = title,
-			tags = tags,
-			state = state,
-			description = description,
-			altTitles = altTitles,
-			chapters = chapters.sortedByDescending { it.number }, 
-		)
+		// Nếu vòng lặp kết thúc mà không tìm thấy
+		throw ParseException("DEBUG: Không tìm thấy <script> nào chứa 'chapterListEn'", manga.url)
 	}
 
 	// *** HÀM GETPAGES (V17) - Logic RegEx (Đã chính xác) ***
