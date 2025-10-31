@@ -11,6 +11,7 @@ import org.dokiteam.doki.parsers.exception.ParseException
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import org.dokiteam.doki.parsers.util.json.getStringOrNull
+import org.dokiteam.doki.parsers.util.json.toJsonObject // Giả định import này
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.regex.Pattern
@@ -105,7 +106,8 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 				url = href, 
 				publicUrl = href, 
 				rating = RATING_UNKNOWN,
-				contentRating = ContentType.ADULT,
+				// *** FIX 1: Unresolved reference 'ADULT' ***
+				contentRating = ContentRating.ADULT, 
 				coverUrl = coverUrl,
 				tags = emptySet(),
 				state = null,
@@ -115,17 +117,17 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 		}
 	}
 
-	// *** HÀM GETDETAILS ĐÃ ĐƯỢC CHỈNH SỬA ĐỂ DEBUG (V13) ***
+	// *** HÀM GETDETAILS (V13 - DEBUG THROW) ***
 	override suspend fun getDetails(manga: Manga): Manga {
 		val doc = webClient.httpGet(manga.url).parseHtml() 
 		
-		// 1. Lấy thông tin từ HTML
 		val title = doc.selectFirst("h1.md\\:text-2xl")?.text() ?: manga.title
 		val tags = doc.select("a[href^=/genre/]").mapNotNullToSet { a ->
 			val tagName = a.text().toTitleCase(sourceLocale)
 			val tagKey = a.attrOrNull("href")?.substringAfterLast('/')
 			if (tagKey != null && tagName.isNotEmpty()) {
-				MangaTag(title = tagName, key = key, source = source)
+				// *** FIX 2: Unresolved reference 'key' ***
+				MangaTag(title = tagName, key = tagKey, source = source)
 			} else {
 				null
 			}
@@ -139,45 +141,31 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 		val description = doc.selectFirst("div#introduction-wrap p.font-light")?.html()?.nullIfEmpty()
 		val altTitles = emptySet<String>() 
 		
-		// 2. Lấy Chapters từ JSON stream
 		val scripts = doc.select("script")
-		
-		// *** FIX (V12): RegEx chỉ tìm "data", bỏ qua "chapterListEn" ***
 		val regex = Pattern.compile("\\\"data\\\":(\\[.*?\\])")
-		
 		var foundData = "DEBUG: Không tìm thấy script chứa 'createdAt'"
 
 		for (script in scripts) {
 			if (script.hasAttr("src")) continue 
 
-			val scriptData = script.data() // scriptData = '...\"data\":[...],\"chapterListEn\":[]...'
+			val scriptData = script.data()
 			
 			if (scriptData.contains("createdAt")) { 
 				val matcher = regex.matcher(scriptData)
 				
 				if (matcher.find()) {
-					// 1. Lấy chuỗi JSON (vẫn còn escape)
 					val viChaptersEscaped = matcher.group(1) ?: "[]"
-					
-					// *** DEBUG: Ném ra dữ liệu thô mà RegEx bắt được ***
-					throw ParseException(viChaptersEscaped, manga.url)
-					
-					// Code bên dưới sẽ không chạy
-					// val viChaptersStr = viChaptersEscaped.replace("\\\"", "\"")
-					// ...
-					
+					throw ParseException(viChaptersEscaped, manga.url) // Ném lỗi debug
 				} else {
 					foundData = "DEBUG: Đã tìm thấy script 'createdAt' NHƯNG RegEx thất bại"
 				}
 			}
 		}
 
-		// Nếu vòng lặp kết thúc mà không throw,
-		// ném lỗi debug cuối cùng
 		throw ParseException(foundData, manga.url)
 	}
 
-	// *** HÀM GETPAGES (V9) - Đã chính xác ***
+	// *** HÀM GETPAGES (V9) ***
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
 		val urlParts = chapter.url.split("/")
 		val mangaId = urlParts.getOrNull(4)
@@ -189,13 +177,16 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 		}
 
 		val apiUrl = "https://$apiDomain/comic/read/$mangaId"
-		val urlBuilder = apiUrl.toUrlBuilder()
+		
+		// *** FIX 3: Unresolved reference 'toUrlBuilder' ***
+		val urlBuilder = webClient.newUrlBuilder(apiUrl)
 			.addQueryParameter("name", chapterName)
 			.addQueryParameter("lang", lang)
 			.build()
 
 		try {
-			val response = webClient.httpGet(urlBuilder).parseJson<JSONObject>()
+			// *** FIX 4: Inapplicable candidate 'parseJson' ***
+			val response = webClient.httpGet(urlBuilder).parseRaw().toJsonObject()
 			val picturesArray = response.optJSONArray("pictures") ?: JSONArray()
 			
 			return (0 until picturesArray.length()).map { i ->
@@ -214,8 +205,6 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 
 	/**
 	 * Logic fetchTags động (đã chính xác):
-	 * Quét các file JS được link từ trang chủ
-	 * để tìm mảng `genres:[{...}]`
 	 */
 	private suspend fun fetchTags(): Set<MangaTag> {
 		val doc = webClient.httpGet("https://$domain").parseHtml()
