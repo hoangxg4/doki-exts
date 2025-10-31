@@ -11,7 +11,6 @@ import org.dokiteam.doki.parsers.exception.ParseException
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import org.dokiteam.doki.parsers.util.json.getStringOrNull
-// (Đã xoá import 'toUrlBuilder' không hợp lệ)
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.regex.Pattern
@@ -23,8 +22,6 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 
 	override val configKeyDomain = ConfigKey.Domain("nhentaiclub.icu")
 	
-	// (Đã xoá apiDomain, không còn cần thiết)
-
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
 		keys.add(userAgentKey)
@@ -117,7 +114,7 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 		}
 	}
 
-	// *** HÀM GETDETAILS ĐÃ ĐƯỢC VIẾT LẠI (V17) ***
+	// *** HÀM GETDETAILS (V17) ***
 	override suspend fun getDetails(manga: Manga): Manga {
 		val doc = webClient.httpGet(manga.url).parseHtml() 
 		
@@ -158,7 +155,6 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 					val viChaptersStr = viChaptersEscaped.replace("\\\"", "\"")
 					val viArray = try { JSONArray(viChaptersStr) } catch (e: Exception) { JSONArray() }
 					
-					// Tìm chapter lớn nhất
 					var maxNum = 0
 					for (i in 0 until viArray.length()) {
 						val chapObj = viArray.getJSONObject(i)
@@ -170,7 +166,7 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 					if (maxNum > 0) {
 						maxChapter = maxNum
 					}
-					break // Đã tìm thấy
+					break 
 				}
 			}
 		}
@@ -187,7 +183,8 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 				number = i.toFloat(),
 				url = url, 
 				scanlator = null,
-				uploadDate = null, // Không thể biết ngày upload
+				// *** FIX (V18): 'null' không hợp lệ, dùng '0L' ***
+				uploadDate = 0L, 
 				branch = "Tiếng Việt",
 				source = source,
 				volume = 0
@@ -200,12 +197,11 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 			state = state,
 			description = description,
 			altTitles = altTitles,
-			// Sắp xếp ngược (descending) để chap mới nhất lên đầu
 			chapters = chapters.sortedByDescending { it.number }, 
 		)
 	}
 
-	// *** HÀM GETPAGES (V17) - Quay lại logic RegEx (thay vì API) ***
+	// *** HÀM GETPAGES (V17) - Logic RegEx (Đã chính xác) ***
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
 		val doc = webClient.httpGet(chapter.url).parseHtml()
 
