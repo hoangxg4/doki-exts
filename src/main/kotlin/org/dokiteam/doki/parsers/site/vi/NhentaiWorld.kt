@@ -7,7 +7,7 @@ import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
 import org.dokiteam.doki.parsers.core.PagedMangaParser
-import org.dokiteam.doki.parsers.exception.HttpException
+// (FIX 1: Đã xoá import 'HttpException' không tồn tại)
 import org.dokiteam.doki.parsers.exception.ParseException
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
@@ -49,7 +49,7 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 		availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED),
 	)
 
-	// *** HÀM GETLISTPAGE ĐÃ ĐƯỢC VIẾT LẠI (V21) - Logic RegEx ***
+	// *** HÀM GETLISTPAGE (V21) ***
 	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val urlBuilder = urlBuilder()
 		
@@ -119,22 +119,24 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 
 		// 2. Logic chính: Parse JSON stream (RSC)
 		val scripts = doc.select("script")
-		// RegEx tìm: href:"/g/1234", ... alt:"Title", ... src:"https...thumbnail.jpg"
 		val regex = Pattern.compile("href:\"(\\/g\\/\\d+)\".*?alt:\"(.*?)\".*?src:\"(https.*?thumbnail\\.jpg)\"")
 		
 		for (script in scripts) {
 			if (script.hasAttr("src")) continue
 			
 			val scriptData = script.data()
-			// "max-h-[405px]" là class CSS cho item, dùng làm "mồi"
-			if (scriptData.contains("max-h-[405px]")) {
+			if (scriptData.contains("max-h-[405px]")) { // "mồi"
 				val matcher = regex.matcher(scriptData)
 				
 				while (matcher.find()) {
 					val href = "https://$domain${matcher.group(1)}"
-					// Un-escape tiêu đề (VD: Gi\u1EA3i C\u1EE9u -> Giải Cứu)
-					val title = matcher.group(2).unescapeJson()
-					val coverUrl = matcher.group(3).replace("\\\"", "\"") // Un-escape URL
+					
+					// *** FIX 2: Unresolved reference 'unescapeJson' ***
+					val titleEscaped = matcher.group(2) ?: ""
+					// Dùng JSONArray để parse chuỗi có \uXXXX
+					val title = try { JSONArray("[\"$titleEscaped\"]").getString(0) } catch (e: Exception) { titleEscaped }
+					
+					val coverUrl = matcher.group(3).replace("\\\"", "\"")
 
 					mangaList.add(
 						Manga(
@@ -153,14 +155,11 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 						)
 					)
 				}
-				// Nếu đã tìm thấy, thoát
 				if (mangaList.isNotEmpty()) {
 					return mangaList
 				}
 			}
 		}
-
-		// Nếu cả hai đều thất bại
 		return emptyList()
 	}
 
