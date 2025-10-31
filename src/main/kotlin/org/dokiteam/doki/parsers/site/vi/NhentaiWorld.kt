@@ -2,7 +2,7 @@ package org.dokiteam.doki.parsers.site.vi
 
 import okhttp3.Headers
 import org.json.JSONArray
-import org.json.JSONObject
+import org.json.JSONObject // *** FIX: Import JSONObject ***
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
@@ -11,7 +11,7 @@ import org.dokiteam.doki.parsers.exception.ParseException
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import org.dokiteam.doki.parsers.util.json.getStringOrNull
-import org.dokiteam.doki.parsers.util.json.toJsonObject // Giả định import này
+import org.dokiteam.doki.parsers.util.toUrlBuilder // *** FIX: Import toUrlBuilder ***
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.regex.Pattern
@@ -106,7 +106,6 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 				url = href, 
 				publicUrl = href, 
 				rating = RATING_UNKNOWN,
-				// *** FIX 1: Unresolved reference 'ADULT' ***
 				contentRating = ContentRating.ADULT, 
 				coverUrl = coverUrl,
 				tags = emptySet(),
@@ -126,7 +125,6 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 			val tagName = a.text().toTitleCase(sourceLocale)
 			val tagKey = a.attrOrNull("href")?.substringAfterLast('/')
 			if (tagKey != null && tagName.isNotEmpty()) {
-				// *** FIX 2: Unresolved reference 'key' ***
 				MangaTag(title = tagName, key = tagKey, source = source)
 			} else {
 				null
@@ -178,15 +176,15 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 
 		val apiUrl = "https://$apiDomain/comic/read/$mangaId"
 		
-		// *** FIX 3: Unresolved reference 'toUrlBuilder' ***
-		val urlBuilder = webClient.newUrlBuilder(apiUrl)
+		// *** FIX 2: Unresolved reference 'newUrlBuilder' ***
+		val urlBuilder = apiUrl.toUrlBuilder()
 			.addQueryParameter("name", chapterName)
 			.addQueryParameter("lang", lang)
 			.build()
 
 		try {
-			// *** FIX 4: Inapplicable candidate 'parseJson' ***
-			val response = webClient.httpGet(urlBuilder).parseRaw().toJsonObject()
+			// *** FIX 3: Unresolved reference 'toJsonObject' ***
+			val response = JSONObject(webClient.httpGet(urlBuilder).parseRaw())
 			val picturesArray = response.optJSONArray("pictures") ?: JSONArray()
 			
 			return (0 until picturesArray.length()).map { i ->
