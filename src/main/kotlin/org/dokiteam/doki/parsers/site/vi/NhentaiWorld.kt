@@ -2,7 +2,7 @@ package org.dokiteam.doki.parsers.site.vi
 
 import okhttp3.Headers
 import org.json.JSONArray
-import org.json.JSONObject // *** FIX: Import JSONObject ***
+import org.json.JSONObject 
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
@@ -11,10 +11,11 @@ import org.dokiteam.doki.parsers.exception.ParseException
 import org.dokiteam.doki.parsers.model.*
 import org.dokiteam.doki.parsers.util.*
 import org.dokiteam.doki.parsers.util.json.getStringOrNull
-import org.dokiteam.doki.parsers.util.toUrlBuilder // *** FIX: Import toUrlBuilder ***
+// (Đã xoá import 'toUrlBuilder' không hợp lệ)
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.regex.Pattern
+import kotlin.math.max
 
 @MangaSourceParser("NHENTAICLUB", "Nhentai Club", "vi", ContentType.HENTAI)
 internal class NhentaiWorld(context: MangaLoaderContext) :
@@ -22,7 +23,7 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 
 	override val configKeyDomain = ConfigKey.Domain("nhentaiclub.icu")
 	
-	private val apiDomain = "nhentaiclub.cyou"
+	// (Đã xoá apiDomain, không còn cần thiết)
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
@@ -116,10 +117,11 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 		}
 	}
 
-	// *** HÀM GETDETAILS (V13 - DEBUG THROW) ***
+	// *** HÀM GETDETAILS ĐÃ ĐƯỢC VIẾT LẠI (V17) ***
 	override suspend fun getDetails(manga: Manga): Manga {
 		val doc = webClient.httpGet(manga.url).parseHtml() 
 		
+		// 1. Lấy thông tin từ HTML
 		val title = doc.selectFirst("h1.md\\:text-2xl")?.text() ?: manga.title
 		val tags = doc.select("a[href^=/genre/]").mapNotNullToSet { a ->
 			val tagName = a.text().toTitleCase(sourceLocale)
@@ -139,13 +141,13 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 		val description = doc.selectFirst("div#introduction-wrap p.font-light")?.html()?.nullIfEmpty()
 		val altTitles = emptySet<String>() 
 		
+		// 2. Lấy Chapters (Logic V17: Generate 1..N)
 		val scripts = doc.select("script")
 		val regex = Pattern.compile("\\\"data\\\":(\\[.*?\\])")
-		var foundData = "DEBUG: Không tìm thấy script chứa 'createdAt'"
-
+		var maxChapter = 1 // Mặc định là 1 (cho oneshot)
+		
 		for (script in scripts) {
 			if (script.hasAttr("src")) continue 
-
 			val scriptData = script.data()
 			
 			if (scriptData.contains("createdAt")) { 
@@ -153,42 +155,65 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 				
 				if (matcher.find()) {
 					val viChaptersEscaped = matcher.group(1) ?: "[]"
-					throw ParseException(viChaptersEscaped, manga.url) // Ném lỗi debug
-				} else {
-					foundData = "DEBUG: Đã tìm thấy script 'createdAt' NHƯNG RegEx thất bại"
+					val viChaptersStr = viChaptersEscaped.replace("\\\"", "\"")
+					val viArray = try { JSONArray(viChaptersStr) } catch (e: Exception) { JSONArray() }
+					
+					// Tìm chapter lớn nhất
+					var maxNum = 0
+					for (i in 0 until viArray.length()) {
+						val chapObj = viArray.getJSONObject(i)
+						val name = chapObj.getStringOrNull("name")
+						val num = name?.toIntOrNull() ?: 0
+						maxNum = max(maxNum, num)
+					}
+					
+					if (maxNum > 0) {
+						maxChapter = maxNum
+					}
+					break // Đã tìm thấy
 				}
 			}
 		}
-
-		throw ParseException(foundData, manga.url)
-	}
-
-	// *** HÀM GETPAGES (V9) ***
-	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-		val urlParts = chapter.url.split("/")
-		val mangaId = urlParts.getOrNull(4)
-		val chapterName = urlParts.getOrNull(5)?.substringBefore("?")
-		val lang = chapter.url.substringAfter("?lang=", "VI")
 		
-		if (mangaId == null || chapterName == null) {
-			throw ParseException("URL chapter không hợp lệ: ${chapter.url}", chapter.url)
+		// 3. Tạo danh sách chapter từ 1 đến maxChapter
+		val mangaId = manga.url.substringAfterLast('/')
+		val chapters = (1..maxChapter).map { i ->
+			val name = i.toString()
+			val url = "https://_domain/read/$mangaId/$name?lang=VI".replace("_domain", domain)
+			
+			MangaChapter(
+				id = generateUid(url),
+				title = "Chapter $name",
+				number = i.toFloat(),
+				url = url, 
+				scanlator = null,
+				uploadDate = null, // Không thể biết ngày upload
+				branch = "Tiếng Việt",
+				source = source,
+				volume = 0
+			)
 		}
 
-		val apiUrl = "https://$apiDomain/comic/read/$mangaId"
-		
-		// *** FIX 2: Unresolved reference 'newUrlBuilder' ***
-		val urlBuilder = apiUrl.toUrlBuilder()
-			.addQueryParameter("name", chapterName)
-			.addQueryParameter("lang", lang)
-			.build()
+		return manga.copy(
+			title = title,
+			tags = tags,
+			state = state,
+			description = description,
+			altTitles = altTitles,
+			// Sắp xếp ngược (descending) để chap mới nhất lên đầu
+			chapters = chapters.sortedByDescending { it.number }, 
+		)
+	}
 
-		try {
-			// *** FIX 3: Unresolved reference 'toJsonObject' ***
-			val response = JSONObject(webClient.httpGet(urlBuilder).parseRaw())
-			val picturesArray = response.optJSONArray("pictures") ?: JSONArray()
-			
-			return (0 until picturesArray.length()).map { i ->
-				val imgUrl = picturesArray.getString(i)
+	// *** HÀM GETPAGES (V17) - Quay lại logic RegEx (thay vì API) ***
+	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
+		val doc = webClient.httpGet(chapter.url).parseHtml()
+
+		// 1. Thử tìm HTML (Fallback, có thể thất bại)
+		val root = doc.select("div.flex.flex-col.items-center > img.m-auto")
+		if (root.isNotEmpty()) {
+			return root.map { img ->
+				val imgUrl = img.requireSrc()
 				MangaPage(
 					id = generateUid(imgUrl),
 					url = imgUrl,
@@ -196,9 +221,39 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 					source = source,
 				)
 			}
-		} catch (e: Exception) {
-			throw ParseException("Lỗi khi gọi API getPages: ${e.message}", urlBuilder.toString())
 		}
+
+		// 2. Logic chính: Parse JSON stream (RSC)
+		val scripts = doc.select("script")
+		val regex = Pattern.compile("\\\"pictures\\\":(\\[.*?\\])") // Tìm mảng "pictures":[...]
+		
+		for (script in scripts) {
+			if (script.hasAttr("src")) continue
+			
+			val scriptData = script.data() // '...\"pictures\":[\"url1\", \"url2\"]...'
+			if (scriptData.contains("pictures")) {
+				val matcher = regex.matcher(scriptData)
+				
+				if (matcher.find()) {
+					val picturesEscaped = matcher.group(1) ?: "[]"
+					val picturesStr = picturesEscaped.replace("\\\"", "\"")
+					val picturesArray = try { JSONArray(picturesStr) } catch (e: Exception) { JSONArray() }
+					
+					return (0 until picturesArray.length()).map { i ->
+						val imgUrl = picturesArray.getString(i)
+						MangaPage(
+							id = generateUid(imgUrl),
+							url = imgUrl,
+							preview = null,
+							source = source,
+						)
+					}
+				}
+			}
+		}
+
+		// 3. Nếu cả hai đều thất bại
+		throw ParseException("Không tìm thấy ảnh (Selector và RegEx đều thất bại)", chapter.url)
 	}
 
 	/**
