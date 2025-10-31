@@ -2,6 +2,7 @@ package org.dokiteam.doki.parsers.site.vi
 
 import okhttp3.Headers
 import org.json.JSONArray
+import org.json.JSONObject
 import org.dokiteam.doki.parsers.MangaLoaderContext
 import org.dokiteam.doki.parsers.MangaSourceParser
 import org.dokiteam.doki.parsers.config.ConfigKey
@@ -19,6 +20,8 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 	PagedMangaParser(context, MangaParserSource.NHENTAICLUB, 24) {
 
 	override val configKeyDomain = ConfigKey.Domain("nhentaiclub.icu")
+	
+	private val apiDomain = "nhentaiclub.cyou"
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
@@ -47,9 +50,6 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 		availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED),
 	)
 
-	// CẢNH BÁO: Logic của getListPage và getPages có thể cũng
-	// yêu cầu phân tích JSON/RegEx tương tự như getDetails.
-	// Chúng ta sẽ sửa getDetails trước.
 	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val urlBuilder = urlBuilder()
 		
@@ -90,11 +90,7 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 
 		val doc = webClient.httpGet(urlBuilder.build()).parseHtml()
 
-		// Logic này có thể thất bại nếu trang chủ cũng dùng RSC/JS
 		val mangaElements = doc.select("div.grid a[href^=/g/]")
-		if (mangaElements.isEmpty()) {
-			// TODO: Thêm logic RegEx cho getListPage nếu cần
-		}
 
 		return mangaElements.map { a ->
 			val href = a.attrAsAbsoluteUrl("href") 
@@ -109,7 +105,7 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 				url = href, 
 				publicUrl = href, 
 				rating = RATING_UNKNOWN,
-				contentRating = ContentRating.ADULT,
+				contentRating = ContentType.ADULT,
 				coverUrl = coverUrl,
 				tags = emptySet(),
 				state = null,
@@ -119,147 +115,91 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 		}
 	}
 
+	// *** HÀM GETDETAILS ĐÃ ĐƯỢC CHỈNH SỬA ĐỂ DEBUG (V13) ***
 	override suspend fun getDetails(manga: Manga): Manga {
 		val doc = webClient.httpGet(manga.url).parseHtml() 
 		
-		// 1. Lấy thông tin từ HTML (phần này vẫn ổn)
+		// 1. Lấy thông tin từ HTML
 		val title = doc.selectFirst("h1.md\\:text-2xl")?.text() ?: manga.title
-
 		val tags = doc.select("a[href^=/genre/]").mapNotNullToSet { a ->
 			val tagName = a.text().toTitleCase(sourceLocale)
 			val tagKey = a.attrOrNull("href")?.substringAfterLast('/')
 			if (tagKey != null && tagName.isNotEmpty()) {
-				MangaTag(title = tagName, key = tagKey, source = source)
+				MangaTag(title = tagName, key = key, source = source)
 			} else {
 				null
 			}
 		}
-
 		val stateText = doc.select("a[href*=?status=]")?.text()
 		val state = when (stateText) {
 			"Đang tiến hành" -> MangaState.ONGOING
 			"Hoàn thành" -> MangaState.FINISHED
 			else -> null
 		}
-
 		val description = doc.selectFirst("div#introduction-wrap p.font-light")?.html()?.nullIfEmpty()
-
-		val altTitles = description?.split("\n")?.mapNotNullToSet { line ->
-			when {
-				line.startsWith("Tên khác:", ignoreCase = true) ->
-					line.substringAfter(':').trim()
-				// (Giữ lại logic cũ)
-				line.startsWith("Tên tiếng anh:", ignoreCase = true) ->
-					line.substringAfter(':').substringBefore("Tên gốc:").trim()
-				line.startsWith("Tên gốc:", ignoreCase = true) ->
-					line.substringAfter(':').trim().substringBefore(' ')
-				else -> null
-			}
-		}
+		val altTitles = emptySet<String>() 
 		
 		// 2. Lấy Chapters từ JSON stream
-		val chapters = mutableListOf<MangaChapter>()
 		val scripts = doc.select("script")
 		
-		val chapterDateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT)
-		val mangaId = manga.url.substringAfterLast('/')
+		// *** FIX (V12): RegEx chỉ tìm "data", bỏ qua "chapterListEn" ***
+		val regex = Pattern.compile("\\\"data\\\":(\\[.*?\\])")
 		
-		// *** FIX (V8): Đã gỡ bỏ dấu \ khỏi RegEx ***
-		// RegEx này tìm chuỗi JSON *sau khi* đã được Jsoup un-escape
-		val regex = Pattern.compile("\"data\":(\\[.*?\\]),\"chapterListEn\":(\\[.*?\\])")
-		
-		var found = false
+		var foundData = "DEBUG: Không tìm thấy script chứa 'createdAt'"
+
 		for (script in scripts) {
 			if (script.hasAttr("src")) continue 
 
-			val scriptData = script.data() // scriptData = '...{"data":[...]}'
-			if (scriptData.contains("chapterListEn")) {
+			val scriptData = script.data() // scriptData = '...\"data\":[...],\"chapterListEn\":[]...'
+			
+			if (scriptData.contains("createdAt")) { 
 				val matcher = regex.matcher(scriptData)
 				
 				if (matcher.find()) {
-					val viChaptersStr = matcher.group(1)
-					val enChaptersStr = matcher.group(2)
+					// 1. Lấy chuỗi JSON (vẫn còn escape)
+					val viChaptersEscaped = matcher.group(1) ?: "[]"
 					
-					val viArray = try { JSONArray(viChaptersStr) } catch (e: Exception) { JSONArray() }
-					val enArray = try { JSONArray(enChaptersStr) } catch (e: Exception) { JSONArray() }
+					// *** DEBUG: Ném ra dữ liệu thô mà RegEx bắt được ***
+					throw ParseException(viChaptersEscaped, manga.url)
 					
-					// Parse VI Chapters
-					for (i in 0 until viArray.length()) {
-						val chapObj = viArray.getJSONObject(i)
-						val name = chapObj.getStringOrNull("name") ?: continue
-						val uploadDateStr = chapObj.getStringOrNull("createdAt")?.substringBefore("T")
-						val uploadDate = chapterDateFormat.parseSafe(uploadDateStr)
-
-						val url = "https://_domain/read/$mangaId/$name?lang=VI".replace("_domain", domain)
-						chapters.add(
-							MangaChapter(
-								id = generateUid(url),
-								title = "Chapter $name",
-								number = name.toFloatOrNull() ?: (i + 1).toFloat(),
-								url = url, 
-								scanlator = null,
-								uploadDate = uploadDate,
-								branch = "Tiếng Việt",
-								source = source,
-								volume = 0
-							)
-						)
-					}
+					// Code bên dưới sẽ không chạy
+					// val viChaptersStr = viChaptersEscaped.replace("\\\"", "\"")
+					// ...
 					
-					// Parse EN Chapters
-					for (i in 0 until enArray.length()) {
-						val chapObj = enArray.getJSONObject(i)
-						val name = chapObj.getStringOrNull("name") ?: continue
-						val uploadDateStr = chapObj.getStringOrNull("createdAt")?.substringBefore("T")
-						val uploadDate = chapterDateFormat.parseSafe(uploadDateStr)
-
-						val url = "https://_domain/read/$mangaId/$name?lang=EN".replace("_domain", domain)
-						chapters.add(
-							MangaChapter(
-								id = generateUid(url),
-								title = "Chapter $name",
-								number = name.toFloatOrNull() ?: (i + 1).toFloat(),
-								url = url, 
-								scanlator = null,
-								uploadDate = uploadDate,
-								branch = "English",
-								source = source,
-								volume = 0
-							)
-						)
-					}
-					
-					found = true
-					break 
+				} else {
+					foundData = "DEBUG: Đã tìm thấy script 'createdAt' NHƯNG RegEx thất bại"
 				}
 			}
 		}
-		
-		if (!found) {
-			// (Giữ im lặng nếu không tìm thấy để tránh crash app)
-			// throw ParseException("Không thể tìm thấy JSON stream của chapter", manga.url)
-		}
 
-		return manga.copy(
-			title = title,
-			tags = tags,
-			state = state,
-			description = description,
-			altTitles = altTitles.orEmpty(),
-			chapters = chapters.sortedBy { it.number }, 
-		)
+		// Nếu vòng lặp kết thúc mà không throw,
+		// ném lỗi debug cuối cùng
+		throw ParseException(foundData, manga.url)
 	}
 
+	// *** HÀM GETPAGES (V9) - Đã chính xác ***
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-		val url = chapter.url 
-		val doc = webClient.httpGet(url).parseHtml()
+		val urlParts = chapter.url.split("/")
+		val mangaId = urlParts.getOrNull(4)
+		val chapterName = urlParts.getOrNull(5)?.substringBefore("?")
+		val lang = chapter.url.substringAfter("?lang=", "VI")
 		
-		// 1. Thử tìm HTML (Selector này có thể thất bại)
-		val root = doc.select("div.flex.flex-col.items-center > img.m-auto")
+		if (mangaId == null || chapterName == null) {
+			throw ParseException("URL chapter không hợp lệ: ${chapter.url}", chapter.url)
+		}
 
-		if (root.isNotEmpty()) {
-			return root.map { img ->
-				val imgUrl = img.requireSrc()
+		val apiUrl = "https://$apiDomain/comic/read/$mangaId"
+		val urlBuilder = apiUrl.toUrlBuilder()
+			.addQueryParameter("name", chapterName)
+			.addQueryParameter("lang", lang)
+			.build()
+
+		try {
+			val response = webClient.httpGet(urlBuilder).parseJson<JSONObject>()
+			val picturesArray = response.optJSONArray("pictures") ?: JSONArray()
+			
+			return (0 until picturesArray.length()).map { i ->
+				val imgUrl = picturesArray.getString(i)
 				MangaPage(
 					id = generateUid(imgUrl),
 					url = imgUrl,
@@ -267,38 +207,9 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 					source = source,
 				)
 			}
+		} catch (e: Exception) {
+			throw ParseException("Lỗi khi gọi API getPages: ${e.message}", urlBuilder.toString())
 		}
-
-		// 2. Fallback: Thử tìm JSON stream (giống getDetails)
-		val scripts = doc.select("script")
-		// *** FIX (V8): Đã gỡ bỏ dấu \ khỏi RegEx ***
-		val regex = Pattern.compile("\"pictures\":(\\[.*?\\])") // Tìm mảng "pictures":[...]
-		
-		for (script in scripts) {
-			if (script.hasAttr("src")) continue
-			
-			val scriptData = script.data()
-			if (scriptData.contains("\"pictures\":")) {
-				val matcher = regex.matcher(scriptData)
-				if (matcher.find()) {
-					val picturesStr = matcher.group(1)
-					val picturesArray = JSONArray(picturesStr)
-					
-					return (0 until picturesArray.length()).map { i ->
-						val imgUrl = picturesArray.getString(i)
-						MangaPage(
-							id = generateUid(imgUrl),
-							url = imgUrl,
-							preview = null,
-							source = source,
-						)
-					}
-				}
-			}
-		}
-		
-		// 3. Nếu cả hai đều thất bại, throw lỗi
-		throw ParseException("Không tìm thấy ảnh (Selector và RegEx đều thất bại)", url)
 	}
 
 	/**
@@ -348,7 +259,6 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 			}
 		}
 		
-		// Thất bại, trả về rỗng.
 		return emptySet()
 	}
 }
