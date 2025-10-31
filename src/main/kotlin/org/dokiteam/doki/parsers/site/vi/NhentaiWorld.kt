@@ -132,9 +132,7 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 					val href = "https://$domain${matcher.group(1)}"
 					
 					val titleEscaped = matcher.group(2) ?: ""
-					// Dùng JSONArray để parse chuỗi có \uXXXX
 					val title = try { JSONArray("[\"$titleEscaped\"]").getString(0) } catch (e: Exception) { titleEscaped }
-					
 					val coverUrl = matcher.group(3).replace("\\\"", "\"")
 
 					mangaList.add(
@@ -162,7 +160,7 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 		return emptyList()
 	}
 
-	// *** HÀM GETDETAILS (V27) ***
+	// *** HÀM GETDETAILS (V28) - BẬT LẠI LOGIC PARSE ***
 	override suspend fun getDetails(manga: Manga): Manga {
 		val doc = webClient.httpGet(manga.url).parseHtml() 
 		
@@ -189,63 +187,68 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 		val scripts = doc.select("script")
 		val chapterDateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT)
 		
-		// *** FIX (V27): RegEx ĐƠN GIẢN HÓA, chỉ tìm "data" (ĐÃ ESCAPE) ***
-		val regexData = Pattern.compile("\\\"data\\\":(\\[.*?\\])")
-		val regexId = Pattern.compile("\\\"id\\\":\\\"(.*?)\\\"")
+		// *** FIX (V28): RegEx ĐÃ UN-ESCAPE (không có \\) ***
+		val regexData = Pattern.compile("\"data\":(\\[.*?\\])")
+		val regexId = Pattern.compile("\"id\":\"(\\d+)\"") // Chỉ lấy số
+		
 		var mangaId = ""
+		var viChaptersStr = "[]" // Mặc định là mảng rỗng
 
 		for (script in scripts) {
 			if (script.hasAttr("src")) continue 
 			val scriptData = script.data() 
 			
-			// Chúng ta tìm "createdAt" vì nó chỉ xuất hiện trong mảng chapter
-			if (scriptData.contains("createdAt")) { 
+			// 1. Tìm đúng script (theo "mồi" bạn cung cấp)
+			if (scriptData.contains("@/components/chapterList")) { 
 				
-				// 1. Tìm ID
+				// 2. Lấy ID
 				val idMatcher = regexId.matcher(scriptData)
 				if (idMatcher.find()) {
 					mangaId = idMatcher.group(1)
 				}
-				if (mangaId.isEmpty()) {
-					mangaId = manga.url.substringAfterLast('/') // Fallback
-				}
 
-				// 2. Tìm mảng "data"
+				// 3. Lấy Data
 				val dataMatcher = regexData.matcher(scriptData)
 				if (dataMatcher.find()) {
-					
-					val viChaptersEscaped = dataMatcher.group(1) ?: "[]"
-					val viChaptersStr = viChaptersEscaped.replace("\\\"", "\"")
-					val viArray = try { JSONArray(viChaptersStr) } catch (e: Exception) { JSONArray() }
-					
-					// 3. Parse VI Chapters
-					for (i in 0 until viArray.length()) {
-						val chapObj = viArray.getJSONObject(i)
-						val name = chapObj.getStringOrNull("name") ?: continue
-						val uploadDateStr = chapObj.getStringOrNull("createdAt")?.substringBefore("T")
-						val uploadDate = chapterDateFormat.parseSafe(uploadDateStr) ?: 0L
-
-						val url = "https://_domain/read/$mangaId/$name?lang=VI".replace("_domain", domain)
-						chapters.add(
-							MangaChapter(
-								id = generateUid(url),
-								title = "Chapter $name",
-								number = name.toFloatOrNull() ?: (i + 1).toFloat(),
-								url = url, 
-								scanlator = null,
-								uploadDate = uploadDate,
-								branch = "Tiếng Việt",
-								source = source,
-								volume = 0
-							)
-						)
-					}
-					
-					// Chúng ta không parse 'chapterListEn' vì nó không đáng tin cậy
-					
-					break // Đã tìm thấy
+					viChaptersStr = dataMatcher.group(1) ?: "[]"
 				}
+				
+				break // Đã tìm thấy script, thoát vòng lặp
 			}
+		}
+		
+		if (mangaId.isEmpty()) {
+			mangaId = manga.url.substringAfterLast('/') // Fallback
+		}
+
+		// 4. Parse mảng JSON
+		try {
+			val viArray = JSONArray(viChaptersStr)
+			
+			for (i in 0 until viArray.length()) {
+				val chapObj = viArray.getJSONObject(i)
+				val name = chapObj.getStringOrNull("name") ?: continue
+				val uploadDateStr = chapObj.getStringOrNull("createdAt")?.substringBefore("T")
+				val uploadDate = chapterDateFormat.parseSafe(uploadDateStr) ?: 0L
+
+				val url = "https://_domain/read/$mangaId/$name?lang=VI".replace("_domain", domain)
+				chapters.add(
+					MangaChapter(
+						id = generateUid(url),
+						title = "Chapter $name",
+						number = name.toFloatOrNull() ?: (i + 1).toFloat(),
+						url = url, 
+						scanlator = null,
+						uploadDate = uploadDate,
+						branch = "Tiếng Việt",
+						source = source,
+						volume = 0
+					)
+				)
+			}
+		} catch (e: Exception) {
+			// (Nếu parse lỗi, chapters sẽ rỗng)
+			// throw ParseException("Lỗi parse JSON chapter: $viChaptersStr", manga.url)
 		}
 
 		return manga.copy(
@@ -258,7 +261,7 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 		)
 	}
 
-	// *** HÀM GETPAGES (V26) - Logic RegEx (Đã chính xác) ***
+	// *** HÀM GETPAGES (V28) - Logic RegEx (Un-escaped) ***
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
 		val doc = webClient.httpGet(chapter.url).parseHtml()
 
@@ -276,8 +279,8 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 		}
 
 		val scripts = doc.select("script")
-		// *** FIX (V26): Tìm chuỗi ĐÃ ESCAPE (\\") ***
-		val regex = Pattern.compile("\\\"pictures\\\":(\\[.*?\\])")
+		// *** FIX (V28): Tìm chuỗi ĐÃ UN-ESCAPE (không có \\) ***
+		val regex = Pattern.compile("\"pictures\":(\\[.*?\\])")
 		
 		for (script in scripts) {
 			if (script.hasAttr("src")) continue
@@ -287,8 +290,7 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 				val matcher = regex.matcher(scriptData)
 				
 				if (matcher.find()) {
-					val picturesEscaped = matcher.group(1) ?: "[]"
-					val picturesStr = picturesEscaped.replace("\\\"", "\"")
+					val picturesStr = matcher.group(1) ?: "[]"
 					val picturesArray = try { JSONArray(picturesStr) } catch (e: Exception) { JSONArray() }
 					
 					return (0 until picturesArray.length()).map { i ->
