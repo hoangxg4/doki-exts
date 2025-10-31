@@ -12,6 +12,7 @@ import org.dokiteam.doki.parsers.util.*
 import org.dokiteam.doki.parsers.util.json.getStringOrNull
 import java.text.SimpleDateFormat
 import java.util.*
+import java.util.regex.Pattern
 
 @MangaSourceParser("NHENTAICLUB", "Nhentai Club", "vi", ContentType.HENTAI)
 internal class NhentaiWorld(context: MangaLoaderContext) :
@@ -46,6 +47,9 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 		availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED),
 	)
 
+	// CẢNH BÁO: Logic của getListPage và getPages có thể cũng
+	// yêu cầu phân tích JSON/RegEx tương tự như getDetails.
+	// Chúng ta sẽ sửa getDetails trước.
 	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val urlBuilder = urlBuilder()
 		
@@ -86,10 +90,14 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 
 		val doc = webClient.httpGet(urlBuilder.build()).parseHtml()
 
+		// Logic này có thể thất bại nếu trang chủ cũng dùng RSC/JS
 		val mangaElements = doc.select("div.grid a[href^=/g/]")
+		if (mangaElements.isEmpty()) {
+			// TODO: Thêm logic RegEx cho getListPage nếu cần
+		}
 
 		return mangaElements.map { a ->
-			val href = a.attrAsRelativeUrl("href")
+			val href = a.attrAsAbsoluteUrl("href") 
 			val img = a.selectFirst("img")
 			val title = img?.attr("alt").orEmpty()
 			val coverUrl = img?.attrAsAbsoluteUrlOrNull("src")
@@ -98,8 +106,8 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 				id = generateUid(href),
 				title = title,
 				altTitles = emptySet(),
-				url = href,
-				publicUrl = href.toAbsoluteUrl(domain),
+				url = href, 
+				publicUrl = href, 
 				rating = RATING_UNKNOWN,
 				contentRating = ContentRating.ADULT,
 				coverUrl = coverUrl,
@@ -112,9 +120,10 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 	}
 
 	override suspend fun getDetails(manga: Manga): Manga {
-		val doc = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
+		val doc = webClient.httpGet(manga.url).parseHtml() 
 		
-		val title = doc.selectFirst("h1.md\\:text-3xl.text-2xl")?.text() ?: manga.title
+		// 1. Lấy thông tin từ HTML (phần này vẫn ổn)
+		val title = doc.selectFirst("h1.md\\:text-2xl")?.text() ?: manga.title
 
 		val tags = doc.select("a[href^=/genre/]").mapNotNullToSet { a ->
 			val tagName = a.text().toTitleCase(sourceLocale)
@@ -126,72 +135,109 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 			}
 		}
 
-		val stateText = doc.select("div.flex.items-center.gap-1.text-sm span.font-semibold")
-			.lastOrNull()?.text()
+		val stateText = doc.select("a[href*=?status=]")?.text()
 		val state = when (stateText) {
 			"Đang tiến hành" -> MangaState.ONGOING
 			"Hoàn thành" -> MangaState.FINISHED
 			else -> null
 		}
 
-		val description = doc.selectFirst("div.md\\:text-base.text-sm.leading-relaxed p")?.html()?.nullIfEmpty()
+		val description = doc.selectFirst("div#introduction-wrap p.font-light")?.html()?.nullIfEmpty()
 
 		val altTitles = description?.split("\n")?.mapNotNullToSet { line ->
 			when {
 				line.startsWith("Tên khác:", ignoreCase = true) ->
 					line.substringAfter(':').trim()
-				
+				// (Giữ lại logic cũ)
 				line.startsWith("Tên tiếng anh:", ignoreCase = true) ->
 					line.substringAfter(':').substringBefore("Tên gốc:").trim()
-
 				line.startsWith("Tên gốc:", ignoreCase = true) ->
 					line.substringAfter(':').trim().substringBefore(' ')
-
 				else -> null
 			}
 		}
 		
-		val chapterDateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.ROOT)
+		// 2. Lấy Chapters từ JSON stream
+		val chapters = mutableListOf<MangaChapter>()
+		val scripts = doc.select("script")
+		
+		val chapterDateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT)
+		val mangaId = manga.url.substringAfterLast('/')
+		
+		// *** FIX (V8): Đã gỡ bỏ dấu \ khỏi RegEx ***
+		// RegEx này tìm chuỗi JSON *sau khi* đã được Jsoup un-escape
+		val regex = Pattern.compile("\"data\":(\\[.*?\\]),\"chapterListEn\":(\\[.*?\\])")
+		
+		var found = false
+		for (script in scripts) {
+			if (script.hasAttr("src")) continue 
 
-		var chapterElements = doc.select("div[id=chapter-list-link] a[href^=/read/]")
+			val scriptData = script.data() // scriptData = '...{"data":[...]}'
+			if (scriptData.contains("chapterListEn")) {
+				val matcher = regex.matcher(scriptData)
+				
+				if (matcher.find()) {
+					val viChaptersStr = matcher.group(1)
+					val enChaptersStr = matcher.group(2)
+					
+					val viArray = try { JSONArray(viChaptersStr) } catch (e: Exception) { JSONArray() }
+					val enArray = try { JSONArray(enChaptersStr) } catch (e: Exception) { JSONArray() }
+					
+					// Parse VI Chapters
+					for (i in 0 until viArray.length()) {
+						val chapObj = viArray.getJSONObject(i)
+						val name = chapObj.getStringOrNull("name") ?: continue
+						val uploadDateStr = chapObj.getStringOrNull("createdAt")?.substringBefore("T")
+						val uploadDate = chapterDateFormat.parseSafe(uploadDateStr)
 
-		if (chapterElements.isEmpty()) {
-			chapterElements = doc.select("div.grid.grid-cols-1.divide-y a[href^=/read/]")
-		}
+						val url = "https://_domain/read/$mangaId/$name?lang=VI".replace("_domain", domain)
+						chapters.add(
+							MangaChapter(
+								id = generateUid(url),
+								title = "Chapter $name",
+								number = name.toFloatOrNull() ?: (i + 1).toFloat(),
+								url = url, 
+								scanlator = null,
+								uploadDate = uploadDate,
+								branch = "Tiếng Việt",
+								source = source,
+								volume = 0
+							)
+						)
+					}
+					
+					// Parse EN Chapters
+					for (i in 0 until enArray.length()) {
+						val chapObj = enArray.getJSONObject(i)
+						val name = chapObj.getStringOrNull("name") ?: continue
+						val uploadDateStr = chapObj.getStringOrNull("createdAt")?.substringBefore("T")
+						val uploadDate = chapterDateFormat.parseSafe(uploadDateStr)
 
-		val chapters = chapterElements.mapNotNull { a ->
-			val url = a.attrAsRelativeUrl("href")
-			
-			val titleText = a.selectFirst("span.float-left")?.text()
-				?: a.selectFirst("span.font-medium")?.text()
-				?: return@mapNotNull null
-			
-			val number = titleText.substringAfter("Chapter ").toFloatOrNull()
-				?: titleText.substringAfter("Oneshot").toFloatOrNull()
-				?: -1f
-
-			val uploadDateStr = a.selectFirst("span.float-right")?.text()
-				?: a.selectFirst("span.text-xs.opacity-70")?.text()
-			val uploadDate = chapterDateFormat.parseSafe(uploadDateStr)
-			
-			val langQuery = url.substringAfter("?lang=", "")
-			val branch = when {
-				langQuery.startsWith("VI", ignoreCase = true) -> "Tiếng Việt"
-				langQuery.startsWith("EN", ignoreCase = true) -> "English"
-				else -> null
+						val url = "https://_domain/read/$mangaId/$name?lang=EN".replace("_domain", domain)
+						chapters.add(
+							MangaChapter(
+								id = generateUid(url),
+								title = "Chapter $name",
+								number = name.toFloatOrNull() ?: (i + 1).toFloat(),
+								url = url, 
+								scanlator = null,
+								uploadDate = uploadDate,
+								branch = "English",
+								source = source,
+								volume = 0
+							)
+						)
+					}
+					
+					found = true
+					break 
+				}
 			}
-
-			MangaChapter(
-				id = generateUid(url),
-				title = titleText,
-				number = number,
-				url = url,
-				scanlator = null,
-				uploadDate = uploadDate,
-				branch = branch,
-				source = source,
-				volume = 0
-			)
+		}
+		
+		if (!found) {
+			// (Giữ im lặng nếu không tìm thấy để tránh crash app)
+			// throw ParseException("Không thể tìm thấy JSON stream của chapter", manga.url)
 		}
 
 		return manga.copy(
@@ -200,33 +246,63 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 			state = state,
 			description = description,
 			altTitles = altTitles.orEmpty(),
-			chapters = chapters.reversed(),
+			chapters = chapters.sortedBy { it.number }, 
 		)
 	}
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-		val url = chapter.url.toAbsoluteUrl(domain)
+		val url = chapter.url 
 		val doc = webClient.httpGet(url).parseHtml()
 		
+		// 1. Thử tìm HTML (Selector này có thể thất bại)
 		val root = doc.select("div.flex.flex-col.items-center > img.m-auto")
 
-		if (root.isEmpty()) {
-			throw ParseException("Không tìm thấy ảnh nào (Root is empty!)", url)
+		if (root.isNotEmpty()) {
+			return root.map { img ->
+				val imgUrl = img.requireSrc()
+				MangaPage(
+					id = generateUid(imgUrl),
+					url = imgUrl,
+					preview = null,
+					source = source,
+				)
+			}
 		}
 
-		return root.map { img ->
-			val imgUrl = img.requireSrc()
-			MangaPage(
-				id = generateUid(imgUrl),
-				url = imgUrl,
-				preview = null,
-				source = source,
-			)
+		// 2. Fallback: Thử tìm JSON stream (giống getDetails)
+		val scripts = doc.select("script")
+		// *** FIX (V8): Đã gỡ bỏ dấu \ khỏi RegEx ***
+		val regex = Pattern.compile("\"pictures\":(\\[.*?\\])") // Tìm mảng "pictures":[...]
+		
+		for (script in scripts) {
+			if (script.hasAttr("src")) continue
+			
+			val scriptData = script.data()
+			if (scriptData.contains("\"pictures\":")) {
+				val matcher = regex.matcher(scriptData)
+				if (matcher.find()) {
+					val picturesStr = matcher.group(1)
+					val picturesArray = JSONArray(picturesStr)
+					
+					return (0 until picturesArray.length()).map { i ->
+						val imgUrl = picturesArray.getString(i)
+						MangaPage(
+							id = generateUid(imgUrl),
+							url = imgUrl,
+							preview = null,
+							source = source,
+						)
+					}
+				}
+			}
 		}
+		
+		// 3. Nếu cả hai đều thất bại, throw lỗi
+		throw ParseException("Không tìm thấy ảnh (Selector và RegEx đều thất bại)", url)
 	}
 
 	/**
-	 * Logic fetchTags động:
+	 * Logic fetchTags động (đã chính xác):
 	 * Quét các file JS được link từ trang chủ
 	 * để tìm mảng `genres:[{...}]`
 	 */
@@ -240,7 +316,6 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 			try {
 				val docJS = webClient.httpGet(scriptUrl).parseRaw()
 
-				// Tìm chuỗi "genres:[{" (đây là key chứa mảng JSON)
 				val optionsStart = docJS.indexOf("genres:[{")
 				if (optionsStart == -1) continue 
 
@@ -249,7 +324,6 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 
 				val optionsStr = docJS.substring(optionsStart + 7, optionsEnd + 2)
 
-				// Parse JSON (Thêm quote cho key không có quote)
 				val optionsArray = JSONArray(
 					optionsStr
 						.replace(Regex(",description:\\s*\"[^\"]*\"(,?)"), "$1") 
@@ -274,7 +348,7 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 			}
 		}
 		
-		// Nếu thất bại (do Cloudflare), trả về rỗng.
+		// Thất bại, trả về rỗng.
 		return emptySet()
 	}
 }
