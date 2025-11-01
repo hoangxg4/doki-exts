@@ -165,7 +165,7 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 		return emptyList()
 	}
 
-	// *** HÀM GETDETAILS (SỬA LỖI LOGIC TÌM SCRIPT) ***
+	// *** HÀM GETDETAILS (THÊM LOG TOÀN BỘ HTML) ***
 	override suspend fun getDetails(manga: Manga): Manga {
 		val doc = webClient.httpGet(manga.url).parseHtml()
 
@@ -199,14 +199,16 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 
 		var mangaId = ""
 		var viChaptersStr = "[]" // Mặc định là mảng rỗng
+		var foundScript = false
 		
 		for (script in scripts) {
 			if (script.hasAttr("src")) continue
 			val scriptData = script.data()
 
-			// *** FIX: Nới lỏng điều kiện, chỉ check sự tồn tại của key "data": ***
+			// Điều kiện: Tìm script chứa CẢ "data": VÀ "id":"
 			if (scriptData.contains("\"data\":") && scriptData.contains("\"id\":\"")) {
-
+				foundScript = true
+				
 				// 2. Lấy ID
 				val idMatcher = regexId.matcher(scriptData)
 				if (idMatcher.find()) {
@@ -224,6 +226,12 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 					break
 				}
 			}
+		}
+
+		// --- GIAI ĐOẠN LOG BẰNG THROW (THEO YÊU CẦU) ---
+		if (!foundScript) {
+			// *** DEBUG: Throw toàn bộ HTML theo yêu cầu ***
+			throw ParseException("LOG: Không tìm thấy script nào chứa CẢ \"data\": và \"id\":\"\n\n--- TOÀN BỘ HTML ---\n${doc.html()}", manga.url)
 		}
 
 		if (mangaId.isEmpty()) {
