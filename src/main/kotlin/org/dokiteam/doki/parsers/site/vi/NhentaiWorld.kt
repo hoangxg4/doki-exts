@@ -48,7 +48,7 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 		availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED),
 	)
 
-	// *** HÀM GETLISTPAGE (Đã cập nhật) ***
+	// *** HÀM GETLISTPAGE ***
 	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
 		val urlBuilder = urlBuilder()
 
@@ -108,7 +108,8 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 					url = href,
 					publicUrl = href,
 					rating = RATING_UNKNOWN,
-					contentRating = ContentType.HENTAI.toContentRating(), // Sửa lại
+					// *** FIX: Hoàn nguyên về ContentRating.ADULT ***
+					contentRating = ContentRating.ADULT,
 					coverUrl = coverUrl,
 					tags = emptySet(),
 					state = null,
@@ -148,7 +149,8 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 							url = href,
 							publicUrl = href,
 							rating = RATING_UNKNOWN,
-							contentRating = ContentType.HENTAI.toContentRating(), // Sửa lại
+							// *** FIX: Hoàn nguyên về ContentRating.ADULT ***
+							contentRating = ContentRating.ADULT,
 							coverUrl = coverUrl,
 							tags = emptySet(),
 							state = null,
@@ -165,7 +167,7 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 		return emptyList()
 	}
 
-	// *** HÀM GETDETAILS (SỬA LỖI LOGIC TÌM SCRIPT) ***
+	// *** HÀM GETDETAILS (Đã sửa logic tìm script + Xóa log) ***
 	override suspend fun getDetails(manga: Manga): Manga {
 		val doc = webClient.httpGet(manga.url).parseHtml()
 
@@ -200,74 +202,46 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 		var mangaId = ""
 		var viChaptersStr = "[]" // Mặc định là mảng rỗng
 		var foundScript = false
-		var debugLog = "Bắt đầu tìm script (logic mới)...\n"
 
-		for ((index, script) in scripts.withIndex()) {
+		for (script in scripts) {
 			if (script.hasAttr("src")) continue
 			val scriptData = script.data()
 
-			// *** FIX: Đã loại bỏ mồi "@/components/chapterList" ***
-			// Chỉ tìm script chứa CẢ data VÀ id
+			// *** FIX: Chỉ tìm script chứa CẢ data VÀ id ***
 			if (scriptData.contains("\"data\":[") && scriptData.contains("\"id\":\"")) {
-				debugLog += "Đã tìm thấy script ứng viên tại index $index.\n"
 				foundScript = true
 
 				// 2. Lấy ID
 				val idMatcher = regexId.matcher(scriptData)
 				if (idMatcher.find()) {
 					mangaId = idMatcher.group(1)
-					debugLog += "Trích xuất ID thành công: $mangaId\n"
-				} else {
-					debugLog += "LỖI: Không trích xuất được ID.\n"
 				}
 
 				// 3. Lấy Data
 				val dataMatcher = regexData.matcher(scriptData)
 				if (dataMatcher.find()) {
 					viChaptersStr = dataMatcher.group(1) ?: "[]"
-					debugLog += "Trích xuất Data thành công (50 ký tự đầu): ${viChaptersStr.take(50)}...\n"
-				} else {
-					debugLog += "LỖI: Không trích xuất được Data.\n"
 				}
 
 				// 4. Nếu đã tìm thấy cả hai, thoát vòng lặp
 				if (mangaId.isNotEmpty() && viChaptersStr != "[]") {
-					debugLog += "Break vòng lặp.\n"
 					break
 				}
 			}
 		}
 
-		// --- GIAI ĐOẠN LOG BẰNG THROW ---
-
-		// LOG 1: Kiểm tra xem có script nào được tìm thấy không
-		if (!foundScript) {
-			throw ParseException("LOG: Không tìm thấy script nào chứa CẢ \"data\":[ và \"id\":\"\n$debugLog", manga.url)
-		}
-
-		// LOG 2: Kiểm tra xem data có bị rỗng không
-		if (viChaptersStr == "[]") {
-			throw ParseException("LOG: Đã tìm thấy script, nhưng không thể trích xuất 'data'.\n$debugLog", manga.url)
-		}
-
-		// LOG 3: Kiểm tra ID (nếu rỗng thì dùng fallback)
-		if (mangaId.isEmpty()) {
-			mangaId = manga.url.substringAfterLast('/') // Fallback
-			debugLog += "ID rỗng, dùng fallback ID: $mangaId\n"
-		}
+		// Nếu không tìm thấy script, chapters sẽ rỗng (an toàn)
 		
-		// (Bỏ comment throw dưới đây nếu cần debug sâu hơn)
-		// throw ParseException("LOG: Sắp parse JSON. Log đầy đủ:\n$debugLog\nData:\n$viChaptersStr", manga.url)
+		if (mangaId.isEmpty() && foundScript) {
+			// Vẫn tìm thấy script nhưng không parse được ID (lạ)
+			mangaId = manga.url.substringAfterLast('/') // Fallback
+		} else if (!foundScript) {
+			mangadId = manga.url.substringAfterLast('/') // Fallback
+		}
 
 		// 5. Parse mảng JSON
 		try {
 			val viArray = JSONArray(viChaptersStr)
-			
-			// LOG 4: Kiểm tra mảng JSON sau khi parse
-			if (viArray.length() == 0) {
-				// Đây không hẳn là lỗi, có thể truyện 0 chapter. Nhưng vẫn log nếu cần.
-				// throw ParseException("LOG: Parse JSON thành công, nhưng mảng rỗng.\n$debugLog", manga.url)
-			}
 
 			for (i in 0 until viArray.length()) {
 				val chapObj = viArray.getJSONObject(i)
@@ -291,8 +265,7 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 				)
 			}
 		} catch (e: Exception) {
-			// LOG 5: Bắt lỗi nếu parse JSON thất bại
-			throw ParseException("LOG: LỖI KHI PARSE JSON.\nLog:\n$debugLog\nLỗi: ${e.message}\nData:\n$viChaptersStr", manga.url)
+			// Bỏ qua lỗi parse JSON, trả về list rỗng
 		}
 
 		return manga.copy(
