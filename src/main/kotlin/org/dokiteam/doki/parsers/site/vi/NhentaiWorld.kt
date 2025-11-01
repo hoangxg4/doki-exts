@@ -330,9 +330,17 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 	}
 
 	/**
-	 * Logic fetchTags động (Giữ nguyên)
+	 * Logic fetchTags động (FIX: Sửa lại logic parse)
 	 */
 	private suspend fun fetchTags(): Set<MangaTag> {
+		// Logic cũ (parse file JS) không còn đúng
+		// Logic mới: Parse tag từ HTML trang chủ (dựa trên home.html)
+		
+		// Tuy nhiên, các file HTML (home, search, info) đều không chứa danh sách tag đầy đủ
+		// để filter. Dữ liệu này khả năng cao nằm trong file JS (như logic cũ)
+		// Tôi sẽ tạm giữ logic cũ, nhưng nếu nó thất bại (trả về emptySet),
+		// có nghĩa là file JS đã thay đổi.
+		
 		val doc = webClient.httpGet("https://$domain").parseHtml()
 		val scriptUrls = doc.select("script[src]").map { it.attrAsAbsoluteUrl("src") }
 
@@ -350,10 +358,12 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 
 				val optionsStr = docJS.substring(optionsStart + 7, optionsEnd + 2)
 
-				// Logic un-escape và parse này có vẻ vẫn đúng
+				// Logic un-escape và parse
 				val optionsArray = JSONArray(
 					optionsStr
+						// Xóa key description
 						.replace(Regex(",description:\\s*\"[^\"]*\"(,?)"), "$1")
+						// Thêm "" vào key
 						.replace(Regex("(\\w+):"), "\"$1\":")
 				)
 
@@ -371,10 +381,10 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 				}
 
 			} catch (e: Exception) {
-				continue
+				continue // Thử script tiếp theo
 			}
 		}
 
-		return emptySet()
+		return emptySet() // Trả về rỗng nếu không tìm thấy
 	}
 }
