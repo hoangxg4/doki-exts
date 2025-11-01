@@ -120,7 +120,7 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 
 		// 2. Logic chính: Parse JSON stream (RSC)
 		val scripts = doc.select("script")
-		// FIX: RegEx phải tìm chuỗi CÓ ESCAPE (\")
+		// RegEx tìm chuỗi CÓ ESCAPE (\")
 		val regex = Pattern.compile("href:\\\\\"(\\/g\\/\\d+)\\\\\".*?alt:\\\\\"(.*?)\\\\\".*?src:\\\\\"(https.*?thumbnail\\.jpg)\\\\\"")
 
 		for (script in scripts) {
@@ -166,22 +166,25 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 		return emptyList()
 	}
 
-	// *** HÀM GETDETAILS (FIX LỖI TAG) ***
+	// *** HÀM GETDETAILS (FIX LỖI TAG + THỨ TỰ CHAPTER) ***
 	override suspend fun getDetails(manga: Manga): Manga {
 		val doc = webClient.httpGet(manga.url).parseHtml()
 
 		// Phần parse HTML
 		val title = doc.selectFirst("h1.md\\:text-2xl")?.text() ?: manga.title
+		
+		// *** FIX: Sửa lỗi 'title = title' -> 'title = tagName' ***
 		val tags = doc.select("a[href^=/genre/]").mapNotNullToSet { a ->
 			val tagName = a.text().toTitleCase(sourceLocale)
 			val tagKey = a.attrOrNull("href")?.substringAfterLast('/')
 			if (tagKey != null && tagName.isNotEmpty()) {
-				// *** FIX: Sửa lỗi 'title = title' -> 'title = tagName' ***
+				// Dùng tagName (tên tag) thay vì title (tên truyện)
 				MangaTag(title = tagName, key = tagKey, source = source)
 			} else {
 				null
 			}
 		}
+		
 		val stateText = doc.select("a[href*=?status=]")?.text()
 		val state = when (stateText) {
 			"Đang tiến hành" -> MangaState.ONGOING
@@ -244,6 +247,7 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 					MangaChapter(
 						id = generateUid(url),
 						title = "Chapter $name",
+						// Giữ số chapter, nhưng không dùng để sort nữa
 						number = name.toFloatOrNull() ?: (i + 1).toFloat(),
 						url = url,
 						scanlator = null,
@@ -264,11 +268,12 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 			state = state,
 			description = description,
 			altTitles = altTitles,
-			chapters = chapters.sortedByDescending { it.number },
+			// *** FIX: Đảo ngược list (đang từ 62..1 -> 1..62) để có thứ tự tăng dần ***
+			chapters = chapters.reversed(),
 		)
 	}
 
-	// *** HÀM GETPAGES (FIX LỖI: Quay lại tìm chuỗi KHÔNG ESCAPE) ***
+	// *** HÀM GETPAGES (Logic tìm chuỗi KHÔNG ESCAPE là ĐÚNG) ***
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
 		val doc = webClient.httpGet(chapter.url).parseHtml()
 
@@ -288,19 +293,19 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 
 		// 2. Logic chính: Parse JSON stream (RSC)
 		val scripts = doc.select("script")
-		// *** FIX: RegEx tìm chuỗi KHÔNG escape (theo file read.html) ***
+		// RegEx tìm chuỗi KHÔNG escape (theo file read.html)
 		val regex = Pattern.compile("\"linkList\":(\\[[^\\]]+\\])")
 
 		for (script in scripts) {
 			if (script.hasAttr("src")) continue
 
 			val scriptData = script.data()
-			// *** FIX: Tìm chuỗi KHÔNG escape ***
+			// Tìm chuỗi KHÔNG escape
 			if (scriptData.contains("\"linkList\":")) {
 				val matcher = regex.matcher(scriptData)
 
 				if (matcher.find()) {
-					// *** FIX: Không cần un-escape (replace) ***
+					// Không cần un-escape
 					val pagesStr = matcher.group(1) ?: "[]"
 					val pagesArray = try {
 						JSONArray(pagesStr)
