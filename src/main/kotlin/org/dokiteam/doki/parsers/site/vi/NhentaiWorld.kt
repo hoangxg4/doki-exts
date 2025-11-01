@@ -108,7 +108,6 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 					url = href,
 					publicUrl = href,
 					rating = RATING_UNKNOWN,
-					// *** FIX: Hoàn nguyên về ContentRating.ADULT ***
 					contentRating = ContentRating.ADULT,
 					coverUrl = coverUrl,
 					tags = emptySet(),
@@ -149,7 +148,6 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 							url = href,
 							publicUrl = href,
 							rating = RATING_UNKNOWN,
-							// *** FIX: Hoàn nguyên về ContentRating.ADULT ***
 							contentRating = ContentRating.ADULT,
 							coverUrl = coverUrl,
 							tags = emptySet(),
@@ -167,7 +165,7 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 		return emptyList()
 	}
 
-	// *** HÀM GETDETAILS (Đã sửa logic tìm script + Xóa log) ***
+	// *** HÀM GETDETAILS (Đã sửa lỗi logic tìm script + Sửa lỗi typo) ***
 	override suspend fun getDetails(manga: Manga): Manga {
 		val doc = webClient.httpGet(manga.url).parseHtml()
 
@@ -236,7 +234,8 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 			// Vẫn tìm thấy script nhưng không parse được ID (lạ)
 			mangaId = manga.url.substringAfterLast('/') // Fallback
 		} else if (!foundScript) {
-			mangadId = manga.url.substringAfterLast('/') // Fallback
+			// *** FIX: Sửa lỗi typo mangadId -> mangaId ***
+			mangaId = manga.url.substringAfterLast('/') // Fallback
 		}
 
 		// 5. Parse mảng JSON
