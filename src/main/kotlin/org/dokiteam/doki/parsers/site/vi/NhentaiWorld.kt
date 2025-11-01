@@ -165,7 +165,7 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 		return emptyList()
 	}
 
-	// *** HÀM GETDETAILS (Đã sửa lỗi logic tìm script + Sửa lỗi typo) ***
+	// *** HÀM GETDETAILS (THÊM LOG CHI TIẾT) ***
 	override suspend fun getDetails(manga: Manga): Manga {
 		val doc = webClient.httpGet(manga.url).parseHtml()
 
@@ -228,16 +228,19 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 			}
 		}
 
-		// Nếu không tìm thấy script, chapters sẽ rỗng (an toàn)
-		
-		if (mangaId.isEmpty() && foundScript) {
-			// Vẫn tìm thấy script nhưng không parse được ID (lạ)
-			mangaId = manga.url.substringAfterLast('/') // Fallback
-		} else if (!foundScript) {
-			// *** FIX: Sửa lỗi typo mangadId -> mangaId ***
-			mangaId = manga.url.substringAfterLast('/') // Fallback
+		// --- GIAI ĐOẠN LOG BẰNG THROW ---
+		if (!foundScript) {
+			// Log chi tiết: In ra 250 ký tự đầu của TẤT CẢ các script inline
+			val allScriptsLog = scripts.filter { !it.hasAttr("src") }
+				.mapIndexed { i, s -> "--- SCRIPT $i (first 250 chars) ---\n${s.data().take(250)}...\n" }
+				.joinToString("\n")
+			throw ParseException("LOG: Không tìm thấy script nào chứa CẢ \"data\":[ và \"id\":\"\n\nĐã quét ${allScriptsLog.length} script(s):\n$allScriptsLog", manga.url)
 		}
 
+		if (mangaId.isEmpty()) {
+			mangaId = manga.url.substringAfterLast('/') // Fallback
+		}
+		
 		// 5. Parse mảng JSON
 		try {
 			val viArray = JSONArray(viChaptersStr)
