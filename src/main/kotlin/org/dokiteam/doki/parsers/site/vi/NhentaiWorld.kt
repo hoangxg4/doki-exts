@@ -166,21 +166,25 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 		return emptyList()
 	}
 
-	// *** HÀM GETDETAILS (FIX CHAPTERS VÀ THỨ TỰ) ***
+	// *** HÀM GETDETAILS (FIX LỖI TAG + THỨ TỰ CHAPTER) ***
 	override suspend fun getDetails(manga: Manga): Manga {
 		val doc = webClient.httpGet(manga.url).parseHtml()
 
-		// Các selector HTML này đều khớp với info.html
+		// Phần parse HTML
 		val title = doc.selectFirst("h1.md\\:text-2xl")?.text() ?: manga.title
+		
+		// *** FIX: Sửa lỗi 'title = title' -> 'title = tagName' ***
 		val tags = doc.select("a[href^=/genre/]").mapNotNullToSet { a ->
 			val tagName = a.text().toTitleCase(sourceLocale)
 			val tagKey = a.attrOrNull("href")?.substringAfterLast('/')
 			if (tagKey != null && tagName.isNotEmpty()) {
+				// Dùng tagName (tên tag) thay vì title (tên truyện)
 				MangaTag(title = tagName, key = tagKey, source = source)
 			} else {
 				null
 			}
 		}
+		
 		val stateText = doc.select("a[href*=?status=]")?.text()
 		val state = when (stateText) {
 			"Đang tiến hành" -> MangaState.ONGOING
@@ -190,11 +194,11 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 		val description = doc.selectFirst("div#introduction-wrap p.font-light")?.html()?.nullIfEmpty()
 		val altTitles = emptySet<String>()
 
+		// Phần parse Chapter (Logic tìm chuỗi escape \\\"data\\\": là ĐÚNG)
 		val chapters = mutableListOf<MangaChapter>()
 		val scripts = doc.select("script")
 		val chapterDateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT)
 
-		// *** FIX: RegEx phải khớp với chuỗi đã escape (\\\" là để khớp \") ***
 		val regexData = Pattern.compile("\\\\\"data\\\\\":(\\[.*?\\])")
 		val regexId = Pattern.compile("\\\\\"id\\\\\":\\\\\"(\\d+)\\\\\\\"")
 
@@ -205,23 +209,19 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 			if (script.hasAttr("src")) continue
 			val scriptData = script.data()
 
-			// *** FIX: Tìm chuỗi đã escape (\\\" là để khớp \") ***
+			// Tìm chuỗi đã escape (\\\" là để khớp \")
 			if (scriptData.contains("\\\"data\\\":") && scriptData.contains("\\\"id\\\":\\\"")) {
 
-				// 2. Lấy ID
 				val idMatcher = regexId.matcher(scriptData)
 				if (idMatcher.find()) {
 					mangaId = idMatcher.group(1)
 				}
 
-				// 3. Lấy Data
 				val dataMatcher = regexData.matcher(scriptData)
 				if (dataMatcher.find()) {
-					// Un-escape chuỗi JSON trước khi parse
 					viChaptersStr = dataMatcher.group(1)?.replace("\\\"", "\"") ?: "[]"
 				}
 
-				// 4. Nếu đã tìm thấy, thoát vòng lặp
 				if (mangaId.isNotEmpty() && viChaptersStr != "[]") {
 					break
 				}
@@ -232,7 +232,7 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 			mangaId = manga.url.substringAfterLast('/') // Fallback
 		}
 
-		// 4. Parse mảng JSON
+		// 5. Parse mảng JSON
 		try {
 			val viArray = JSONArray(viChaptersStr)
 
@@ -247,6 +247,7 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 					MangaChapter(
 						id = generateUid(url),
 						title = "Chapter $name",
+						// Giữ số chapter, nhưng không dùng để sort nữa
 						number = name.toFloatOrNull() ?: (i + 1).toFloat(),
 						url = url,
 						scanlator = null,
@@ -258,8 +259,7 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 				)
 			}
 		} catch (e: Exception) {
-			// (Nếu parse lỗi, chapters sẽ rỗng)
-			// throw ParseException("Lỗi parse JSON chapter: $viChaptersStr", manga.url)
+			// Bỏ qua lỗi parse JSON, trả về list rỗng
 		}
 
 		return manga.copy(
@@ -268,7 +268,7 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 			state = state,
 			description = description,
 			altTitles = altTitles,
-			// *** FIX: Đảo ngược list (JSON từ mới -> cũ) để có thứ tự web (cũ -> mới) ***
+			// *** FIX: Đảo ngược list (đang từ 62..1 -> 1..62) để có thứ tự tăng dần ***
 			chapters = chapters.reversed(),
 		)
 	}
@@ -291,6 +291,7 @@ internal class NhentaiWorld(context: MangaLoaderContext) :
 			}
 		}
 
+		// 2. Logic chính: Parse JSON stream (RSC)
 		val scripts = doc.select("script")
 		// *** FIX: RegEx tìm chuỗi KHÔNG escape (theo file read.html) ***
 		val regex = Pattern.compile("\"linkList\":(\\[[^\\]]+\\])")
